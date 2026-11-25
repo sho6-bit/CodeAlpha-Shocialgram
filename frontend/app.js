@@ -11,6 +11,17 @@ let authMode = "login";
 let toastTimer;
 let postDetailRequest = 0;
 let postDialogCloseTimer;
+let editPostRequest = 0;
+let sharePostRequest = 0;
+let sharePostId = null;
+let selectedShareRecipient = null;
+let connectionUsername = null;
+let connectionKind = null;
+let connectionUsers = [];
+let connectionRequestId = 0;
+let shareSearchRequestId = 0;
+let shareSearchUsers = [];
+let shareSearchTimer;
 const selectedImages = new WeakMap();
 
 const demoProfileImages = {
@@ -64,6 +75,12 @@ function notify(message) {
   toastTimer = setTimeout(() => toast.classList.remove("visible"), 3000);
 }
 
+function showDialogFeedback(id, message) {
+  const feedback = document.querySelector(`#${id}`);
+  feedback.textContent = message;
+  feedback.hidden = false;
+}
+
 function updateAuthUI() {
   document.querySelectorAll("[data-auth-label]").forEach((element) => {
     element.textContent = currentUser ? "Log out" : "Log in";
@@ -88,9 +105,13 @@ function avatar(user, className = "avatar") {
     : `<span class="${className}" aria-label="${escapeHTML(user?.username || "User")}">${label}</span>`;
 }
 
-function postImageAttributes(post) {
+function postImageSource(post) {
   const demoImage = demoPostImages[post.imageUrl.replace(/^\/+/, "")];
-  return `src="${escapeHTML(demoImage || imageSource(post.imageUrl))}"`;
+  return demoImage || imageSource(post.imageUrl);
+}
+
+function postImageAttributes(post) {
+  return `src="${escapeHTML(postImageSource(post))}"`;
 }
 
 document.addEventListener("error", (event) => {
@@ -127,13 +148,34 @@ function emptyState(title, message, actionLabel = "", action = "") {
   return `<div class="empty-state"><div class="empty-emoji">✳</div><h2>${escapeHTML(title)}</h2><p>${escapeHTML(message)}</p>${actionLabel ? `<button class="button button-coral" data-action="${action}">${escapeHTML(actionLabel)}</button>` : ""}</div>`;
 }
 
+function renderPostMenu(post, className = "") {
+  const isOwner = currentUser?.id === post.userId;
+  return `<div class="post-menu-wrap ${className}" data-post-id="${escapeHTML(post.id)}">
+    <button class="more-button" type="button" data-action="post-menu-toggle" aria-label="Post options" aria-haspopup="menu" aria-expanded="false">···</button>
+    <div class="post-action-menu" role="menu" hidden>
+      ${isOwner ? '<button type="button" role="menuitem" data-action="edit-post">Edit post</button><button type="button" role="menuitem" class="danger-menu-item" data-action="delete-post">Delete post</button>' : ""}
+      <button type="button" role="menuitem" data-action="copy-post-link">Copy link</button>
+      <button type="button" role="menuitem" data-action="share-post">Share</button>
+    </div>
+  </div>`;
+}
+
+function renderPostTile(post, username = post.user.username) {
+  return `<div class="post-tile" data-post-id="${escapeHTML(post.id)}">
+    <button class="post-tile-open" type="button" data-action="open-post" data-id="${escapeHTML(post.id)}" aria-label="Open post by ${escapeHTML(username)}">
+      <img ${postImageAttributes(post)} alt="Post by ${escapeHTML(username)}" loading="lazy">
+    </button>
+    ${renderPostMenu(post, "post-menu-grid")}
+  </div>`;
+}
+
 function renderPost(post) {
   const userLink = `/@${encodeURIComponent(post.user.username)}`;
   return `<article class="post-card" data-post-id="${escapeHTML(post.id)}">
     <header class="post-header">
       <a href="${userLink}" data-profile="${escapeHTML(post.user.username)}">${avatar(post.user)}</a>
       <div class="post-author"><a href="${userLink}" data-profile="${escapeHTML(post.user.username)}">${escapeHTML(post.user.username)}</a><time datetime="${escapeHTML(post.createdAt)}">${formattedDate(post.createdAt)}</time></div>
-      ${currentUser?.id === post.userId ? `<button class="more-button" data-action="post-menu" aria-label="Post options">···</button>` : ""}
+      ${renderPostMenu(post)}
     </header>
     <button class="post-image-trigger" type="button" data-action="open-post" data-id="${escapeHTML(post.id)}" aria-label="Open post by ${escapeHTML(post.user.username)}">
       <img class="post-image" ${postImageAttributes(post)} alt="Photo posted by ${escapeHTML(post.user.username)}" loading="lazy">
@@ -175,7 +217,7 @@ function renderPostDetail(post) {
           <a href="${userLink}" data-profile="${escapeHTML(post.user.username)}"><strong>${escapeHTML(post.user.username)}</strong></a>
           ${post.user.fullName ? `<span>${escapeHTML(post.user.fullName)}</span>` : ""}
         </div>
-        ${currentUser?.id === post.userId ? '<button class="more-button" data-action="post-menu" aria-label="Post options">···</button>' : ""}
+        ${renderPostMenu(post)}
       </header>
       <div class="post-detail-scroll">
         <article class="detail-caption-row">
@@ -221,16 +263,29 @@ postDialog.addEventListener("cancel", (event) => {
   closePostDialog();
 });
 document.addEventListener("keydown", (event) => {
-  if (event.key !== "Escape" || !postDialog.open) return;
+  if (event.key !== "Escape") return;
+  if (document.querySelector(".post-action-menu:not([hidden])")) {
+    closePostMenus();
+    event.preventDefault();
+    return;
+  }
   const focusedDialog = document.activeElement?.closest("dialog");
-  if (focusedDialog && focusedDialog !== postDialog) return;
+  const topDialog = focusedDialog || [...dialogs].reverse().find((dialog) => dialog.open);
+  if (topDialog && topDialog !== postDialog) {
+    event.preventDefault();
+    topDialog.close();
+    syncDialogScrollLock();
+    return;
+  }
+  if (!postDialog.open) return;
   event.preventDefault();
   closePostDialog();
 });
 postDialog.addEventListener("close", () => {
   clearTimeout(postDialogCloseTimer);
   postDialog.classList.remove("is-closing");
-  document.body.classList.remove("post-modal-open");
+  delete postDialog.dataset.postId;
+  syncDialogScrollLock();
   postDetailRequest += 1;
 });
 
@@ -279,7 +334,7 @@ async function renderExplore() {
   try {
     const { posts } = await api("/posts/explore");
     view.innerHTML = posts.length
-      ? `<div class="explore-grid">${posts.map((post) => `<button data-action="open-post" data-id="${escapeHTML(post.id)}" aria-label="Open post by ${escapeHTML(post.user.username)}"><img ${postImageAttributes(post)} alt="Post by ${escapeHTML(post.user.username)}" loading="lazy"></button>`).join("")}</div>`
+      ? `<div class="explore-grid">${posts.map((post) => renderPostTile(post)).join("")}</div>`
       : emptyState("The good stuff is just starting", "When people start sharing, their recent photos will find a home here.");
   } catch (error) { showError(error); }
   finally { view.setAttribute("aria-busy", "false"); }
@@ -299,13 +354,13 @@ async function renderProfile(username) {
         <div class="profile-stats">
           <span><strong>${counts.posts}</strong> posts</span>
           <button data-action="connections" data-kind="followers" data-username="${escapeHTML(user.username)}"><strong data-followers>${counts.followers}</strong> followers</button>
-          <button data-action="connections" data-kind="following" data-username="${escapeHTML(user.username)}"><strong>${counts.following}</strong> following</button>
+          <button data-action="connections" data-kind="following" data-username="${escapeHTML(user.username)}"><strong data-following>${counts.following}</strong> following</button>
         </div>
         <p class="profile-bio"><strong>${escapeHTML(user.fullName)}</strong>${user.bio ? `<br>${escapeHTML(user.bio)}` : ""}</p>
       </div>
     </section>
     <div class="profile-divider">POSTS</div>
-    ${posts.length ? `<div class="profile-grid">${posts.map((post) => `<button data-action="open-post" data-id="${escapeHTML(post.id)}" aria-label="Open post"><img ${postImageAttributes(post)} alt="Post by ${escapeHTML(user.username)}" loading="lazy"></button>`).join("")}</div>` : emptyState(isOwn ? "Your gallery starts here" : "No posts yet", isOwn ? "Share a photo and let people see the world through your eyes." : "This profile hasn't shared any photos yet.", isOwn ? "Create your first post" : "", isOwn ? "create" : "")}`;
+    ${posts.length ? `<div class="profile-grid">${posts.map((post) => renderPostTile(post, user.username)).join("")}</div>` : emptyState(isOwn ? "Your gallery starts here" : "No posts yet", isOwn ? "Share a photo and let people see the world through your eyes." : "This profile hasn't shared any photos yet.", isOwn ? "Create your first post" : "", isOwn ? "create" : "")}`;
   } catch (error) { showError(error); }
   finally { view.setAttribute("aria-busy", "false"); }
 }
@@ -313,10 +368,23 @@ async function renderProfile(username) {
 function openDialog(id) {
   const dialog = document.querySelector(`#${id}`);
   if (!dialog.open) dialog.showModal();
+  syncDialogScrollLock();
 }
 
 function closeDialogs() {
   dialogs.forEach((dialog) => dialog.close());
+  syncDialogScrollLock();
+}
+
+function syncDialogScrollLock() {
+  document.body.classList.toggle("modal-open", dialogs.some((dialog) => dialog.open));
+}
+
+function closePostMenus() {
+  document.querySelectorAll(".post-action-menu:not([hidden])").forEach((menu) => {
+    menu.hidden = true;
+    menu.parentElement.querySelector("[data-action='post-menu-toggle']")?.setAttribute("aria-expanded", "false");
+  });
 }
 
 function clearImagePicker(uploader) {
@@ -396,8 +464,31 @@ document.querySelectorAll("[data-image-uploader]").forEach((uploader) => {
 });
 
 dialogs.forEach((dialog) => {
+  if (dialog !== postDialog) {
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      dialog.close();
+      syncDialogScrollLock();
+    });
+    dialog.addEventListener("click", (event) => {
+      if (event.target !== dialog) return;
+      dialog.close();
+      syncDialogScrollLock();
+    });
+  }
   dialog.addEventListener("close", () => {
     dialog.querySelectorAll("[data-image-uploader]").forEach(clearImagePicker);
+    syncDialogScrollLock();
+    if (dialog.id === "share-dialog") {
+      clearTimeout(shareSearchTimer);
+      shareSearchRequestId += 1;
+      sharePostRequest += 1;
+      sharePostId = null;
+      selectedShareRecipient = null;
+      shareSearchUsers = [];
+    } else if (dialog.id === "connections-dialog") {
+      connectionRequestId += 1;
+    }
   });
 });
 
@@ -430,10 +521,13 @@ async function openPost(id) {
   const target = document.querySelector("#post-detail");
   const requestId = ++postDetailRequest;
   clearTimeout(postDialogCloseTimer);
+  document.querySelector("#post-action-feedback").hidden = true;
+  closePostMenus();
   postDialog.classList.remove("is-closing");
-  document.body.classList.add("post-modal-open");
+  postDialog.dataset.postId = id;
   target.innerHTML = '<div class="post-detail-state"><div class="skeleton" aria-label="Loading post"></div><p>Loading post...</p></div>';
   if (!postDialog.open) postDialog.showModal();
+  syncDialogScrollLock();
   try {
     const { post } = await api(`/posts/${encodeURIComponent(id)}`);
     if (requestId !== postDetailRequest || !postDialog.open) return;
@@ -444,10 +538,209 @@ async function openPost(id) {
   }
 }
 
+function postShareUrl(id) {
+  const url = new URL("/", window.location.origin);
+  url.searchParams.set("post", id);
+  return url.toString();
+}
+
+async function copyText(text) {
+  let clipboardError;
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (error) {
+      clipboardError = error;
+    }
+  }
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) {
+    throw new Error(clipboardError
+      ? "Clipboard access failed, and your browser could not copy the link."
+      : "Your browser could not copy the link.");
+  }
+}
+
+async function copyPostLink(id) {
+  await copyText(postShareUrl(id));
+  closePostMenus();
+  if (document.querySelector("#share-dialog").open) showDialogFeedback("share-feedback", "Link copied!");
+  if (postDialog.open) showDialogFeedback("post-action-feedback", "Link copied!");
+  notify("Link copied!");
+}
+
+async function openEditPost(id) {
+  if (!currentUser) return openAuth();
+  closePostMenus();
+  const requestId = ++editPostRequest;
+  const dialog = document.querySelector("#edit-post-dialog");
+  const form = document.querySelector("#edit-post-form");
+  const submit = form.querySelector('[type="submit"]');
+  const image = document.querySelector("#edit-post-image");
+  const status = document.querySelector("#edit-post-status");
+  let loaded = false;
+  form.dataset.postId = id;
+  form.elements.caption.value = "";
+  document.querySelector("#edit-post-feedback").hidden = true;
+  image.removeAttribute("src");
+  image.hidden = true;
+  status.hidden = false;
+  status.textContent = "Loading post…";
+  submit.disabled = true;
+  openDialog("edit-post-dialog");
+  try {
+    const { post } = await api(`/posts/${encodeURIComponent(id)}`);
+    if (requestId !== editPostRequest || !dialog.open) return;
+    form.elements.caption.value = post.caption || "";
+    image.src = postImageSource(post);
+    image.hidden = false;
+    status.hidden = true;
+    loaded = true;
+  } catch (error) {
+    if (requestId === editPostRequest && dialog.open) {
+      status.textContent = error.message;
+      notify(error.message);
+    }
+  } finally {
+    if (requestId === editPostRequest && dialog.open) submit.disabled = !loaded;
+  }
+}
+
+function openDeletePost(id) {
+  if (!currentUser) return openAuth();
+  closePostMenus();
+  document.querySelector("#delete-post-form").dataset.postId = id;
+  document.querySelector("#delete-post-feedback").hidden = true;
+  openDialog("delete-post-dialog");
+}
+
+async function openSharePost(id) {
+  closePostMenus();
+  const requestId = ++sharePostRequest;
+  sharePostId = id;
+  selectedShareRecipient = null;
+  shareSearchUsers = [];
+  shareSearchRequestId += 1;
+  const preview = document.querySelector("#share-post-preview");
+  const chatPanel = document.querySelector("#share-chat-panel");
+  const results = document.querySelector("#share-user-results");
+  const sendButton = document.querySelector("#send-post-share");
+  document.querySelector("#share-user-search").value = "";
+  document.querySelector("#share-feedback").hidden = true;
+  chatPanel.hidden = true;
+  results.innerHTML = "";
+  sendButton.disabled = true;
+  sendButton.textContent = "Choose a recipient";
+  document.querySelector("#share-whatsapp-link").href = "#";
+  preview.innerHTML = '<div class="share-preview-loading"><div class="skeleton"></div><span>Loading post…</span></div>';
+  openDialog("share-dialog");
+  try {
+    const { post } = await api(`/posts/${encodeURIComponent(id)}`);
+    if (requestId !== sharePostRequest || !document.querySelector("#share-dialog").open) return;
+    const url = postShareUrl(id);
+    preview.innerHTML = `<img ${postImageAttributes(post)} alt=""><div><strong>@${escapeHTML(post.user.username)}</strong><p>${escapeHTML(post.caption || "A moment from Shocialgram")}</p></div>`;
+    document.querySelector("#share-whatsapp-link").href = `https://wa.me/?text=${encodeURIComponent(`Check out this post on Shocialgram: ${url}`)}`;
+    results.innerHTML = '<p class="share-hint">Search for a username to choose someone.</p>';
+  } catch (error) {
+    if (requestId === sharePostRequest && document.querySelector("#share-dialog").open) {
+      preview.innerHTML = `<p class="share-error">${escapeHTML(error.message)}</p>`;
+      notify(error.message);
+    }
+  }
+}
+
+function renderShareUsers(users) {
+  const results = document.querySelector("#share-user-results");
+  if (!users.length) {
+    results.innerHTML = '<p class="share-hint">No people found.</p>';
+    return;
+  }
+  results.innerHTML = users.map((user) => {
+    const selected = selectedShareRecipient?.id === user.id;
+    return `<button class="share-user-row ${selected ? "is-selected" : ""}" type="button" data-action="select-share-recipient" data-user-id="${escapeHTML(user.id)}" aria-pressed="${selected}">
+      ${avatar(user)}
+      <span><strong>@${escapeHTML(user.username)}</strong><small>${escapeHTML(user.fullName || "Shocialgram member")}</small></span>
+      <span class="share-user-check" aria-hidden="true">${selected ? "✓" : ""}</span>
+    </button>`;
+  }).join("");
+}
+
+function updateShareRecipientButton() {
+  const button = document.querySelector("#send-post-share");
+  button.disabled = !selectedShareRecipient;
+  button.textContent = selectedShareRecipient ? `Send to @${selectedShareRecipient.username}` : "Choose a recipient";
+}
+
+function renderConnections() {
+  const list = document.querySelector("#connections-list");
+  const query = document.querySelector("#connections-search-input").value.trim().toLowerCase();
+  const users = connectionUsers.filter((user) => (
+    user.username.toLowerCase().includes(query) || (user.fullName || "").toLowerCase().includes(query)
+  ));
+  if (!connectionUsers.length) {
+    list.innerHTML = '<div class="connection-state"><span aria-hidden="true">✳</span><strong>No connections yet</strong><p>This list will grow as people connect.</p></div>';
+    return;
+  }
+  if (!users.length) {
+    list.innerHTML = '<div class="connection-state"><strong>No matches</strong><p>Try another username or name.</p></div>';
+    return;
+  }
+  list.innerHTML = users.map((user) => {
+    const isSelf = currentUser?.id === user.id;
+    const action = !currentUser ? "auth" : isSelf ? "" : "connection-follow";
+    const label = isSelf ? "You" : user.isFollowing ? "Following" : connectionKind === "followers" ? "Follow back" : "Follow";
+    const buttonClass = user.isFollowing ? "button button-outline" : "button button-coral";
+    return `<article class="connection-row" data-user-id="${escapeHTML(user.id)}">
+      <a class="connection-avatar" href="/@${encodeURIComponent(user.username)}" data-profile="${escapeHTML(user.username)}">${avatar(user)}</a>
+      <a class="connection-copy" href="/@${encodeURIComponent(user.username)}" data-profile="${escapeHTML(user.username)}"><strong>${escapeHTML(user.username)}</strong><span>${escapeHTML(user.fullName || "")}</span></a>
+      ${action ? `<button class="${buttonClass}" type="button" data-action="${action}" data-user-id="${escapeHTML(user.id)}" ${isSelf ? "disabled" : ""}>${label}</button>` : '<span class="connection-you">You</span>'}
+    </article>`;
+  }).join("");
+}
+
+async function openConnections(username, kind) {
+  connectionUsername = username;
+  connectionKind = kind;
+  connectionUsers = [];
+  document.querySelector("#connections-title").textContent = kind === "followers" ? "Followers" : "Following";
+  document.querySelector("#connections-search-input").value = "";
+  document.querySelector("#connections-feedback").hidden = true;
+  document.querySelector("#connections-list").innerHTML = '<div class="connection-skeleton"><span></span><span></span><span></span><span></span></div>';
+  const requestId = ++connectionRequestId;
+  openDialog("connections-dialog");
+  try {
+    const { users } = await api(`/users/${encodeURIComponent(username)}/${kind}`);
+    if (requestId !== connectionRequestId || !document.querySelector("#connections-dialog").open) return;
+    connectionUsers = users;
+    renderConnections();
+  } catch (error) {
+    if (requestId === connectionRequestId) {
+      document.querySelector("#connections-list").innerHTML = `<div class="connection-state"><strong>Couldn't load this list</strong><p>${escapeHTML(error.message)}</p></div>`;
+      showDialogFeedback("connections-feedback", error.message);
+      notify(error.message);
+    }
+  }
+}
+
 document.addEventListener("click", async (event) => {
+  if (!event.target.closest(".post-menu-wrap")) closePostMenus();
   const profileLink = event.target.closest("[data-profile]");
   if (profileLink) {
     event.preventDefault();
+    const sourceDialog = profileLink.closest("dialog");
+    if (sourceDialog && sourceDialog !== postDialog) {
+      sourceDialog.close();
+      syncDialogScrollLock();
+    }
     if (postDialog.open) closePostDialog();
     return openPage("profile", profileLink.dataset.profile);
   }
@@ -470,7 +763,10 @@ document.addEventListener("click", async (event) => {
     else if (action === "auth-mode") {
       authMode = authMode === "login" ? "register" : "login";
       updateAuthMode();
-    } else if (action === "close-dialog") closeDialogs();
+    } else if (action === "close-dialog") {
+      control.closest("dialog")?.close();
+      syncDialogScrollLock();
+    }
     else if (action === "close-post-detail") closePostDialog();
     else if (action === "retry-post-detail") return openPost(control.dataset.id);
     else if (action === "focus-comment") document.querySelector("#post-comment-input")?.focus();
@@ -488,22 +784,45 @@ document.addEventListener("click", async (event) => {
       form.fullName.value = currentUser.fullName;
       form.bio.value = currentUser.bio;
       openDialog("profile-dialog");
-    } else if (action === "post-menu") {
-      const choice = prompt("Type edit to change the caption, or delete to remove this post.");
-      if (choice?.toLowerCase() === "delete" && confirm("Delete this post? This cannot be undone.")) {
-        await api(`/posts/${card.dataset.postId}`, { method: "DELETE" });
-        if (postDialog.open) closePostDialog();
-        notify("Post deleted.");
-        return openPage(currentPage, profileUsername);
-      }
-      if (choice?.toLowerCase() === "edit") {
-        const caption = prompt("Edit your caption:");
-        if (caption !== null) {
-          await api(`/posts/${card.dataset.postId}`, { method: "PATCH", body: JSON.stringify({ caption }) });
-          notify("Caption updated.");
-          if (postDialog.open) return openPost(card.dataset.postId);
-          return openPage(currentPage, profileUsername);
-        }
+    } else if (action === "post-menu-toggle") {
+      const menu = control.parentElement.querySelector(".post-action-menu");
+      const willOpen = menu.hidden;
+      closePostMenus();
+      menu.hidden = !willOpen;
+      control.setAttribute("aria-expanded", String(willOpen));
+    } else if (action === "edit-post") {
+      return openEditPost(card?.dataset.postId);
+    } else if (action === "delete-post") {
+      return openDeletePost(card?.dataset.postId);
+    } else if (action === "copy-post-link") {
+      return await copyPostLink(control.dataset.postId || card?.dataset.postId || sharePostId);
+    } else if (action === "share-post") {
+      return openSharePost(card?.dataset.postId);
+    } else if (action === "share-chat") {
+      if (!currentUser) return openAuth();
+      const panel = document.querySelector("#share-chat-panel");
+      panel.hidden = false;
+      document.querySelector("#share-user-search").focus();
+    } else if (action === "select-share-recipient") {
+      selectedShareRecipient = shareSearchUsers.find((user) => user.id === control.dataset.userId) || null;
+      renderShareUsers(shareSearchUsers);
+      updateShareRecipientButton();
+    } else if (action === "send-post-share") {
+      if (!currentUser || !sharePostId || !selectedShareRecipient) return;
+      control.disabled = true;
+      control.textContent = "Sending…";
+      try {
+        await api("/messages/share-post", {
+          method: "POST",
+          body: JSON.stringify({ postId: sharePostId, receiverId: selectedShareRecipient.id }),
+        });
+        document.querySelector("#share-dialog").close();
+        syncDialogScrollLock();
+        notify("Post shared in chat.");
+      } catch (error) {
+        showDialogFeedback("share-feedback", error.message);
+        updateShareRecipientButton();
+        throw error;
       }
     } else if (action === "like") {
       if (!currentUser) return openAuth();
@@ -520,16 +839,33 @@ document.addEventListener("click", async (event) => {
       const result = await api(`/users/${control.dataset.userId}/follow`, { method: "POST" });
       notify(result.following ? "You’re now following this account." : "You unfollowed this account.");
       return openPage("profile", profileUsername);
+    } else if (action === "connection-follow") {
+      control.disabled = true;
+      let following;
+      try {
+        ({ following } = await api(`/users/${control.dataset.userId}/follow`, { method: "POST" }));
+      } catch (error) {
+        control.disabled = false;
+        showDialogFeedback("connections-feedback", error.message);
+        throw error;
+      }
+      notify(following ? "You’re now following this account." : "You unfollowed this account.");
+      if (currentPage === "profile" && profileUsername === connectionUsername) {
+        await openPage("profile", profileUsername);
+      }
+      return openConnections(connectionUsername, connectionKind);
     } else if (action === "connections") {
-      const { users } = await api(`/users/${encodeURIComponent(control.dataset.username)}/${control.dataset.kind}`);
-      const list = users.length ? users.map((user) => `@${user.username}`).join("\n") : "No one here yet.";
-      alert(`${control.dataset.kind === "followers" ? "Followers" : "Following"}\n\n${list}`);
+      return openConnections(control.dataset.username, control.dataset.kind);
     } else if (action === "delete-comment") {
       if (!confirm("Delete this comment?")) return;
       await api(`/posts/${control.dataset.postId}/comments/${control.dataset.commentId}`, { method: "DELETE" });
       await openPost(control.dataset.postId);
     }
-  } catch (error) { notify(error.message); }
+  } catch (error) {
+    if (control.closest("#share-dialog")) showDialogFeedback("share-feedback", error.message);
+    if (control.closest("#connections-dialog")) showDialogFeedback("connections-feedback", error.message);
+    notify(error.message);
+  }
 });
 
 document.querySelector("#auth-form").addEventListener("submit", async (event) => {
@@ -594,6 +930,63 @@ document.querySelector("#profile-form").addEventListener("submit", async (event)
   } catch (error) { notify(error.message); }
 });
 
+document.querySelector("#edit-post-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const postId = form.dataset.postId;
+  if (!postId) return;
+  const submit = form.querySelector('[type="submit"]');
+  const dialog = document.querySelector("#edit-post-dialog");
+  const reopenDetail = postDialog.open && postDialog.dataset.postId === postId;
+  submit.disabled = true;
+  submit.textContent = "Saving…";
+  try {
+    await api(`/posts/${encodeURIComponent(postId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ caption: form.elements.caption.value }),
+    });
+    dialog.close();
+    notify("Post updated.");
+    await openPage(currentPage, profileUsername);
+    if (reopenDetail) await openPost(postId);
+  } catch (error) {
+    showDialogFeedback("edit-post-feedback", error.message);
+    notify(error.message);
+  } finally {
+    if (dialog.open) {
+      submit.disabled = false;
+      submit.textContent = "Save changes";
+    }
+  }
+});
+
+document.querySelector("#delete-post-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const postId = form.dataset.postId;
+  if (!postId) return;
+  const submit = form.querySelector('[type="submit"]');
+  const dialog = document.querySelector("#delete-post-dialog");
+  const reopenDetail = postDialog.open && postDialog.dataset.postId === postId;
+  submit.disabled = true;
+  submit.textContent = "Deleting…";
+  try {
+    await api(`/posts/${encodeURIComponent(postId)}`, { method: "DELETE" });
+    dialog.close();
+    if (reopenDetail) closePostDialog();
+    notify("Post deleted.");
+    await openPage(currentPage, profileUsername);
+  } catch (error) {
+    showDialogFeedback("delete-post-feedback", error.message);
+    notify(error.message);
+  } finally {
+    if (dialog.open) {
+      submit.disabled = false;
+      submit.textContent = "Delete post";
+    }
+  }
+});
+
 document.querySelector("#post-detail").addEventListener("submit", async (event) => {
   if (!event.target.matches(".comment-form")) return;
   event.preventDefault();
@@ -625,6 +1018,33 @@ document.querySelector("#user-search").addEventListener("input", (event) => {
   }, 220);
 });
 
+document.querySelector("#connections-search-input").addEventListener("input", renderConnections);
+
+document.querySelector("#share-user-search").addEventListener("input", (event) => {
+  clearTimeout(shareSearchTimer);
+  const query = event.target.value.trim();
+  const results = document.querySelector("#share-user-results");
+  const requestId = ++shareSearchRequestId;
+  if (query.length < 2) {
+    shareSearchUsers = [];
+    results.innerHTML = '<p class="share-hint">Search with at least two characters.</p>';
+    return;
+  }
+  results.innerHTML = '<div class="share-search-loading"><span></span><span></span><span></span></div>';
+  shareSearchTimer = setTimeout(async () => {
+    try {
+      const { users } = await api(`/users/search?q=${encodeURIComponent(query)}`);
+      if (requestId !== shareSearchRequestId || !document.querySelector("#share-dialog").open) return;
+      shareSearchUsers = users.filter((user) => user.id !== currentUser?.id);
+      renderShareUsers(shareSearchUsers);
+    } catch (error) {
+      if (requestId !== shareSearchRequestId) return;
+      results.innerHTML = `<p class="share-error">${escapeHTML(error.message)}</p>`;
+      notify(error.message);
+    }
+  }, 220);
+});
+
 document.documentElement.dataset.theme = localStorage.getItem(themeKey) || "light";
 document.querySelectorAll("[data-theme-label]").forEach((label) => {
   label.textContent = document.documentElement.dataset.theme === "dark" ? "Light mode" : "Dark mode";
@@ -635,5 +1055,13 @@ if (localStorage.getItem(tokenKey)) {
   api("/auth/me")
     .then(({ user }) => { currentUser = user; updateAuthUI(); })
     .catch(() => localStorage.removeItem(tokenKey))
-    .finally(() => openPage("feed"));
-} else openPage("feed");
+    .finally(async () => {
+      await openPage("feed");
+      const sharedPostId = new URLSearchParams(window.location.search).get("post");
+      if (sharedPostId) await openPost(sharedPostId);
+    });
+} else {
+  openPage("feed");
+  const sharedPostId = new URLSearchParams(window.location.search).get("post");
+  if (sharedPostId) openPost(sharedPostId);
+}

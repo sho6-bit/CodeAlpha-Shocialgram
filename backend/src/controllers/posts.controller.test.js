@@ -6,7 +6,7 @@ import { configureTestEnvironment, responseStub } from "./test-helpers.js";
 
 configureTestEnvironment();
 
-const [{ createPost }, { prisma }, { removeImage }, { errorHandler }] = await Promise.all([
+const [{ createPost, updatePost, deletePost }, { prisma }, { removeImage }, { errorHandler }] = await Promise.all([
   import("./posts.controller.js"),
   import("../config/prisma.js"),
   import("../utils/image-storage.js"),
@@ -104,6 +104,64 @@ test("createPost removes a saved image if the database insert fails", async (t) 
     access(`${uploadsDirectory}\\${attemptedImageUrl.split("/").pop()}`),
     (error) => error.code === "ENOENT",
   );
+});
+
+test("updatePost changes the existing caption only for its owner", async (t) => {
+  const originalUpdateMany = prisma.post.updateMany;
+  const originalFindUnique = prisma.post.findUnique;
+  t.after(() => {
+    prisma.post.updateMany = originalUpdateMany;
+    prisma.post.findUnique = originalFindUnique;
+  });
+
+  let updateArgs;
+  prisma.post.updateMany = async (args) => {
+    updateArgs = args;
+    return { count: 1 };
+  };
+  prisma.post.findUnique = async () => ({
+    id: 501n,
+    userId: 42n,
+    caption: "Updated caption",
+    imageUrl: "/uploads/unchanged.png",
+    user: { id: 42n, username: "test-user" },
+    _count: { likes: 0, comments: 0 },
+  });
+
+  const response = responseStub();
+  await updatePost({ userId: 42n, params: { id: "501" }, body: { caption: " Updated caption " } }, response);
+  assert.deepEqual(updateArgs.where, { id: 501n, userId: 42n });
+  assert.deepEqual(updateArgs.data, { caption: "Updated caption" });
+  assert.equal(response.body.post.id, "501");
+  assert.equal(response.body.post.imageUrl, "/uploads/unchanged.png");
+});
+
+test("updatePost and deletePost reject posts owned by another user", async (t) => {
+  const originalUpdateMany = prisma.post.updateMany;
+  const originalFindUnique = prisma.post.findUnique;
+  const originalDelete = prisma.post.delete;
+  t.after(() => {
+    prisma.post.updateMany = originalUpdateMany;
+    prisma.post.findUnique = originalFindUnique;
+    prisma.post.delete = originalDelete;
+  });
+
+  let deleteCalled = false;
+  prisma.post.updateMany = async () => ({ count: 0 });
+  prisma.post.findUnique = async () => ({ id: 501n, userId: 99n });
+  prisma.post.delete = async () => {
+    deleteCalled = true;
+  };
+
+  await assert.rejects(
+    updatePost({ userId: 42n, params: { id: "501" }, body: { caption: "Not mine" } }, responseStub()),
+    (error) => error.status === 403,
+  );
+  await assert.rejects(
+    deletePost({ userId: 42n, params: { id: "501" } }, responseStub()),
+    (error) => error.status === 403,
+  );
+  assert.equal(deleteCalled, false);
 });
 
 test("foreign-key failures return a conflict instead of an internal server error", () => {

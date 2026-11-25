@@ -18,7 +18,7 @@ usersRouter.get("/search", optionalAuthenticate, asyncHandler(searchUsers));
 usersRouter.patch("/me", authenticate, asyncHandler(updateProfile));
 usersRouter.post("/me/avatar", authenticate, uploadSingleImage, asyncHandler(updateAvatar));
 usersRouter.post("/:id/follow", authenticate, asyncHandler(toggleFollow));
-usersRouter.get("/:username/:kind(followers|following)", asyncHandler(getConnections));
+usersRouter.get("/:username/:kind(followers|following)", optionalAuthenticate, asyncHandler(getConnections));
 usersRouter.get("/:username", optionalAuthenticate, asyncHandler(getProfile));
 
 export default usersRouter;

@@ -134,10 +134,21 @@ export async function getConnections(request, response) {
     orderBy: { createdAt: "desc" },
   });
   const key = direction === "followers" ? "follower" : "following";
+  const connectedUsers = relations.map(({ [key]: connectedUser }) => connectedUser);
+  const followingIds = request.userId && connectedUsers.length
+    ? new Set((await prisma.follow.findMany({
+        where: {
+          followerId: request.userId,
+          followingId: { in: connectedUsers.map(({ id }) => id) },
+        },
+        select: { followingId: true },
+      })).map(({ followingId }) => followingId.toString()))
+    : new Set();
   response.json({
-    users: relations.map(({ [key]: connectedUser }) => ({
+    users: connectedUsers.map((connectedUser) => ({
       ...toPublicUser(connectedUser),
       followersCount: connectedUser._count.followers,
+      isFollowing: followingIds.has(connectedUser.id.toString()),
     })),
   });
 }

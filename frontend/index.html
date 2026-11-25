@@ -144,7 +144,66 @@
     <dialog id="post-dialog" class="post-modal" aria-labelledby="post-modal-title">
       <h2 id="post-modal-title" class="visually-hidden">Post details</h2>
       <button class="post-modal-close" type="button" data-action="close-post-detail" aria-label="Close post">×</button>
+      <p id="post-action-feedback" class="modal-feedback" role="status" hidden></p>
       <div id="post-detail" class="post-detail-content" aria-live="polite"></div>
+    </dialog>
+    <dialog id="edit-post-dialog" class="dialog-card edit-post-dialog" aria-labelledby="edit-post-title">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close edit post dialog">×</button>
+      <p class="eyebrow">YOUR POST</p>
+      <h2 id="edit-post-title">Edit post</h2>
+      <form id="edit-post-form">
+        <p id="edit-post-status" class="edit-post-note" role="status">Loading post…</p>
+        <img id="edit-post-image" class="edit-post-image" alt="Current post image">
+        <p class="edit-post-note">The current image will stay unchanged. Image replacement is not available yet.</p>
+        <label>Caption<textarea name="caption" rows="4" maxlength="2200"></textarea></label>
+        <p id="edit-post-feedback" class="dialog-feedback" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-outline" type="button" data-action="close-dialog">Cancel</button>
+          <button class="button button-coral" type="submit">Save changes</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="delete-post-dialog" class="dialog-card confirm-dialog" aria-labelledby="delete-post-title">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close delete post dialog">×</button>
+      <p class="eyebrow">PERMANENT ACTION</p>
+      <h2 id="delete-post-title">Delete post?</h2>
+      <p>This post will be permanently deleted. This action cannot be undone.</p>
+      <form id="delete-post-form">
+        <p id="delete-post-feedback" class="dialog-feedback" role="alert" hidden></p>
+        <div class="dialog-actions">
+          <button class="button button-outline" type="button" data-action="close-dialog">Cancel</button>
+          <button class="button button-danger" type="submit">Delete post</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="share-dialog" class="dialog-card share-dialog" aria-labelledby="share-title">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close share dialog">×</button>
+      <p class="eyebrow">PASS IT ALONG</p>
+      <h2 id="share-title">Share post</h2>
+      <div id="share-post-preview" class="share-post-preview" aria-live="polite"></div>
+      <div class="share-options">
+        <button class="share-option" type="button" data-action="share-chat"><span aria-hidden="true">✉</span><strong>Share to chat</strong><small>Send to someone here</small></button>
+        <button class="share-option" type="button" data-action="copy-post-link"><span aria-hidden="true">↗</span><strong>Copy link</strong><small>Share anywhere</small></button>
+        <a id="share-whatsapp-link" class="share-option" href="#" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">◉</span><strong>Open WhatsApp</strong><small>Review and send there</small></a>
+      </div>
+      <p id="share-feedback" class="dialog-feedback" role="status" hidden></p>
+      <section id="share-chat-panel" class="share-chat-panel" hidden>
+        <label for="share-user-search">Find a person</label>
+        <input id="share-user-search" type="search" autocomplete="off" placeholder="Search username">
+        <div id="share-user-results" class="share-user-results" aria-live="polite"></div>
+        <button id="send-post-share" class="button button-coral button-wide" type="button" data-action="send-post-share" disabled>Choose a recipient</button>
+      </section>
+    </dialog>
+    <dialog id="connections-dialog" class="dialog-card connections-dialog" aria-labelledby="connections-title">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close connections dialog">×</button>
+      <p class="eyebrow">SOCIAL CIRCLE</p>
+      <h2 id="connections-title">Followers</h2>
+      <label class="connections-search" for="connections-search-input">
+        <span class="visually-hidden">Search connections</span>
+        <input id="connections-search-input" type="search" autocomplete="off" placeholder="Search people">
+      </label>
+      <p id="connections-feedback" class="dialog-feedback" role="alert" hidden></p>
+      <div id="connections-list" class="connections-list" aria-live="polite"></div>
     </dialog>
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
   </body>
