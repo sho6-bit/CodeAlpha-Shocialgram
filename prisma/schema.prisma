@@ -1,0 +1,123 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                                              BigInt          @id @default(autoincrement())
+  username                                        String          @unique @db.VarChar(50)
+  email                                           String          @unique @db.VarChar(255)
+  password_hash                                   String          @db.VarChar(255)
+  fullName                                        String?         @map("full_name") @db.VarChar(100)
+  bio                                             String?
+  profilePicture                                  String?         @map("profile_picture")
+  createdAt                                       DateTime        @default(now()) @map("created_at") @db.Timestamp(6)
+  updatedAt                                       DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamp(6)
+  comments                                        Comment[]
+  following                                       Follow[]        @relation("Following")
+  followers                                       Follow[]        @relation("Followers")
+  likes                                           Like[]
+  messages_messages_receiver_idTousers            messages[]      @relation("messages_receiver_idTousers")
+  messages_messages_sender_idTousers              messages[]      @relation("messages_sender_idTousers")
+  notifications_notifications_recipient_idTousers notifications[] @relation("notifications_recipient_idTousers")
+  notifications_notifications_sender_idTousers    notifications[] @relation("notifications_sender_idTousers")
+  posts                                           Post[]
+  stories                                         stories[]
+
+  @@map("users")
+}
+
+model Post {
+  id            BigInt          @id @default(autoincrement())
+  userId        BigInt          @map("user_id")
+  caption       String?
+  imageUrl      String          @map("image_url")
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  comments      Comment[]
+  likes         Like[]
+  notifications notifications[]
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_posts_users")
+
+  @@map("posts")
+}
+
+model Comment {
+  id            BigInt          @id @default(autoincrement())
+  postId        BigInt          @map("post_id")
+  userId        BigInt          @map("user_id")
+  content       String
+  createdAt     DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updated_at    DateTime        @default(now()) @db.Timestamptz(6)
+  post          Post            @relation(fields: [postId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comments_posts")
+  user          User            @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_comments_users")
+  notifications notifications[]
+
+  @@map("comments")
+}
+
+model Like {
+  userId    BigInt   @map("user_id")
+  postId    BigInt   @map("post_id")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_likes_posts")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_likes_users")
+
+  @@id([userId, postId], map: "pk_likes")
+  @@map("likes")
+}
+
+model Follow {
+  followerId  BigInt   @map("follower_id")
+  followingId BigInt   @map("following_id")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  follower    User     @relation("Following", fields: [followerId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_follows_follower")
+  following   User     @relation("Followers", fields: [followingId], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_follows_following")
+
+  @@id([followerId, followingId], map: "pk_follows")
+  @@map("follows")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model messages {
+  id                                BigInt   @id @default(autoincrement())
+  sender_id                         BigInt
+  receiver_id                       BigInt
+  content                           String
+  is_read                           Boolean  @default(false)
+  created_at                        DateTime @default(now()) @db.Timestamptz(6)
+  users_messages_receiver_idTousers User     @relation("messages_receiver_idTousers", fields: [receiver_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_messages_receiver")
+  users_messages_sender_idTousers   User     @relation("messages_sender_idTousers", fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_messages_sender")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model notifications {
+  id                                      BigInt   @id @default(autoincrement())
+  recipient_id                            BigInt
+  sender_id                               BigInt
+  type                                    String   @db.VarChar(30)
+  post_id                                 BigInt?
+  comment_id                              BigInt?
+  is_read                                 Boolean  @default(false)
+  created_at                              DateTime @default(now()) @db.Timestamptz(6)
+  comments                                Comment? @relation(fields: [comment_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_comment")
+  posts                                   Post?    @relation(fields: [post_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_post")
+  users_notifications_recipient_idTousers User     @relation("notifications_recipient_idTousers", fields: [recipient_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_recipient")
+  users_notifications_sender_idTousers    User     @relation("notifications_sender_idTousers", fields: [sender_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_sender")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model stories {
+  id         BigInt   @id @default(autoincrement())
+  user_id    BigInt
+  media_url  String
+  media_type String   @db.VarChar(10)
+  caption    String?
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  expires_at DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '24:00:00'::interval)")) @db.Timestamptz(6)
+  users      User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stories_users")
+}

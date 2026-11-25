@@ -1,0 +1,14 @@
+Demo images stored locally for Shocialgram sample accounts and posts.
+
+All source photos are from Unsplash and are used under the Unsplash License:
+https://unsplash.com/license
+
+Profile photos:
+- profiles/el-dev-profile.jpg: https://images.unsplash.com/photo-1534528741775-53994a69daeb
+- profiles/john-doe-profile.jpg: https://images.unsplash.com/photo-1500648767791-00dcc994a43e
+- profiles/maria-jane-profile.jpg: https://images.unsplash.com/photo-1524504388940-b1c1722653e1
+- profiles/alex-chen-profile.jpg: https://images.unsplash.com/photo-1506794778202-cad84cf45f1d
+
+Post photos:
+- posts/welcome-coffee-post.jpg: https://images.unsplash.com/photo-1445116572660-236099ec97a0
+- posts/city-exploration-post.jpg: https://images.unsplash.com/photo-1519501025264-65ba15a82390

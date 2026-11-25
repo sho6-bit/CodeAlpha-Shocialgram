@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f4f1">
+    <meta name="description" content="A thoughtful place to share what you see.">
+    <title>Shocialgram — Share your perspective</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="Primary navigation">
+      <a class="brand" href="/" data-page="feed" aria-label="Shocialgram home">sho<span>cial</span>gram<span class="brand-dot">.</span></a>
+      <nav class="nav-links">
+        <button class="nav-link active" data-page="feed"><span class="nav-icon">⌂</span> Home</button>
+        <button class="nav-link" data-page="explore"><span class="nav-icon">⌕</span> Explore</button>
+        <button class="nav-link" data-action="create"><span class="nav-icon">＋</span> Create post</button>
+        <button class="nav-link" data-page="notifications"><span class="nav-icon">♡</span> Notifications</button>
+        <button class="nav-link" data-action="my-profile"><span class="nav-icon">◎</span> Profile</button>
+      </nav>
+      <div class="sidebar-bottom">
+        <button class="nav-link" data-action="theme"><span class="nav-icon">◐</span> <span data-theme-label>Dark mode</span></button>
+        <button class="nav-link" data-action="auth"><span class="nav-icon">↗</span> <span data-auth-label>Log in</span></button>
+      </div>
+    </aside>
+
+    <header class="mobile-header">
+      <a class="brand" href="/" data-page="feed">shocialgram<span class="brand-dot">.</span></a>
+      <button class="icon-button" data-action="theme" aria-label="Toggle color theme">◐</button>
+    </header>
+
+    <main class="app-main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow" id="page-kicker">YOUR DAILY EDIT</p>
+          <h1 id="page-title">Home</h1>
+        </div>
+        <div class="topbar-actions">
+          <label class="search-wrap">
+            <span aria-hidden="true">⌕</span>
+            <input id="user-search" type="search" placeholder="Search people" autocomplete="off" aria-label="Search users">
+          </label>
+          <button class="icon-button desktop-theme" data-action="theme" aria-label="Toggle color theme">◐</button>
+          <button class="button button-dark" data-action="auth" data-auth-label>Log in</button>
+        </div>
+      </header>
+      <div id="search-results" class="search-results" hidden></div>
+      <section id="view" aria-live="polite" aria-busy="false"></section>
+    </main>
+
+    <nav class="mobile-nav" aria-label="Mobile navigation">
+      <button class="nav-link active" data-page="feed" aria-label="Home">⌂</button>
+      <button class="nav-link" data-page="explore" aria-label="Explore">⌕</button>
+      <button class="nav-link" data-action="create" aria-label="Create post">＋</button>
+      <button class="nav-link" data-page="notifications" aria-label="Notifications">♡</button>
+      <button class="nav-link" data-action="my-profile" aria-label="Profile">◎</button>
+    </nav>
+
+    <dialog id="auth-dialog" class="dialog-card">
+      <form id="auth-form">
+        <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close">×</button>
+        <p class="eyebrow">WELCOME TO SHOCIALGRAM</p>
+        <h2 id="auth-title">Log in</h2>
+        <div id="register-fields" hidden>
+          <label>Full name<input name="fullName" maxlength="80" autocomplete="name"></label>
+          <label>Username<input name="username" minlength="3" maxlength="30" autocomplete="username"></label>
+        </div>
+        <label>Email<input name="email" type="email" required maxlength="254" autocomplete="email"></label>
+        <label>Password<input name="password" type="password" required minlength="8" maxlength="72" autocomplete="current-password"></label>
+        <button class="button button-coral button-wide" type="submit">Continue</button>
+        <p class="dialog-switch"><span id="auth-switch-copy">New here?</span> <button type="button" class="text-button" data-action="auth-mode">Create an account</button></p>
+      </form>
+    </dialog>
+
+    <dialog id="create-dialog" class="dialog-card">
+      <form id="create-form">
+        <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close">×</button>
+        <p class="eyebrow">MAKE A MOMENT</p>
+        <h2>Create a post</h2>
+        <div class="image-field">
+          <span class="field-label">Post image</span>
+          <div class="image-uploader" data-image-uploader>
+            <input id="create-image" class="image-uploader-input" data-image-input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-label="Choose a post image" tabindex="-1" aria-hidden="true">
+            <button class="image-dropzone" type="button" data-image-browse>
+              <span class="image-upload-icon" aria-hidden="true">↑</span>
+              <strong>Drag and drop your image here</strong>
+              <span>or browse files</span>
+              <small>JPG, JPEG, PNG or WebP · Up to 8 MB</small>
+            </button>
+            <div class="image-preview-panel" data-image-preview-panel hidden>
+              <img class="image-preview" data-image-preview alt="Selected post image preview">
+              <div class="image-preview-info">
+                <p class="image-file-name" data-image-file-name></p>
+                <div class="image-preview-actions">
+                  <button class="text-button" type="button" data-image-change>Change image</button>
+                  <button class="text-button" type="button" data-image-remove>Remove image</button>
+                </div>
+              </div>
+            </div>
+            <p class="image-upload-error" data-image-error role="alert" hidden></p>
+          </div>
+        </div>
+        <label>Caption<textarea name="caption" rows="3" maxlength="2200" placeholder="Add a little context..."></textarea></label>
+        <button class="button button-coral button-wide" type="submit">Share post</button>
+      </form>
+    </dialog>
+
+    <dialog id="profile-dialog" class="dialog-card">
+      <form id="profile-form">
+        <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close">×</button>
+        <p class="eyebrow">YOUR SPACE</p>
+        <h2>Edit profile</h2>
+        <div class="image-field">
+          <span class="field-label">Profile photo</span>
+          <div class="image-uploader" data-image-uploader data-image-kind="avatar">
+            <input id="profile-image" class="image-uploader-input" data-image-input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-label="Choose a profile photo" tabindex="-1" aria-hidden="true">
+            <button class="image-dropzone" type="button" data-image-browse>
+              <span class="image-upload-icon" aria-hidden="true">↑</span>
+              <strong>Drag and drop your image here</strong>
+              <span>or browse files</span>
+              <small>JPG, JPEG, PNG or WebP · Up to 8 MB</small>
+            </button>
+            <div class="image-preview-panel" data-image-preview-panel hidden>
+              <img class="image-preview" data-image-preview alt="Selected profile photo preview">
+              <div class="image-preview-info">
+                <p class="image-file-name" data-image-file-name></p>
+                <div class="image-preview-actions">
+                  <button class="text-button" type="button" data-image-change>Change image</button>
+                  <button class="text-button" type="button" data-image-remove>Remove image</button>
+                </div>
+              </div>
+            </div>
+            <p class="image-upload-error" data-image-error role="alert" hidden></p>
+          </div>
+        </div>
+        <label>Username<input name="username" required minlength="3" maxlength="30"></label>
+        <label>Full name<input name="fullName" required maxlength="80"></label>
+        <label>Bio<textarea name="bio" rows="3" maxlength="500"></textarea></label>
+        <button class="button button-coral button-wide" type="submit">Save changes</button>
+      </form>
+    </dialog>
+
+    <dialog id="post-dialog" class="post-modal" aria-labelledby="post-modal-title">
+      <h2 id="post-modal-title" class="visually-hidden">Post details</h2>
+      <button class="post-modal-close" type="button" data-action="close-post-detail" aria-label="Close post">×</button>
+      <div id="post-detail" class="post-detail-content" aria-live="polite"></div>
+    </dialog>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
