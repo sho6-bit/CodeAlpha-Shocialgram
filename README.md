@@ -24,6 +24,43 @@ Uploaded JPEG, PNG, and WebP files are signature-checked, limited to 8 MB, and
 stored in `backend/uploads/`. The `.gitignore` excludes uploads and environment
 files.
 
+## Development test account
+
+The database has no pre-seeded users. Names such as `john_doe` and `el_dev` in
+the frontend are image fallbacks only; they are not login accounts. To create a
+local development account, use a development database that matches
+`prisma/schema.prisma`, then explicitly enable and run the seed. The seed
+refuses to run in production and never changes an existing account.
+
+The checked-in initial migration currently describes a legacy schema (including
+string IDs and a `password` column) that differs from the current Prisma schema
+(BigInt IDs and `password_hash`). Reconcile that migration before using it to
+initialize a clean database; do not reset a database containing data just to
+make the seed work.
+
+PowerShell:
+
+```powershell
+$env:SHOCIALGRAM_ENABLE_DEV_SEED = "1"
+npm run seed:dev
+Remove-Item Env:\SHOCIALGRAM_ENABLE_DEV_SEED
+```
+
+Other shells:
+
+```sh
+SHOCIALGRAM_ENABLE_DEV_SEED=1 npm run seed:dev
+```
+
+Development login:
+
+- Email: `dev-test@shocialgram.test`
+- Username: `dev_test`
+- Password: `ShocialgramDev123!`
+
+These are public development-only credentials. Never use them against a
+production database or reuse this password for another account.
+
 ## Architecture
 
 ```text

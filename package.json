@@ -9,7 +9,11 @@
     "start": "node backend/src/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "seed:dev": "node prisma/seed.js",
     "test": "node --test backend/src/controllers/auth.controller.test.js backend/src/controllers/posts.controller.test.js backend/src/controllers/messages.controller.test.js backend/src/controllers/users.controller.test.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
   },
   "dependencies": {
     "@prisma/client": "^6.19.0",
