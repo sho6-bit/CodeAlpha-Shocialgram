@@ -60,6 +60,13 @@ export async function getPost(request, response) {
     },
   });
   if (!post) throw new AppError(404, "Post not found");
+  if (request.userId && post.userId !== request.userId) {
+    const relation = await prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId: request.userId, followingId: post.userId } },
+      select: { followerId: true },
+    });
+    post.user.isFollowing = Boolean(relation);
+  }
   response.json({ post: serializePost(post, request.userId) });
 }
 

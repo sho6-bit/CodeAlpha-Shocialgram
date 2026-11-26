@@ -26,6 +26,7 @@ let shareSearchTimer;
 let messageConversations = [];
 let activeConversation = null;
 let messagesUnreadCount = 0;
+let notificationsUnreadCount = 0;
 let messagePageRequest = 0;
 let messageHistoryRequest = 0;
 let messageSearchQuery = "";
@@ -37,6 +38,7 @@ let activeStoryGroup = 0;
 let activeStoryIndex = 0;
 let storyTimer;
 let storyPaused = false;
+const storyDurationMs = 10_000;
 const selectedImages = new WeakMap();
 
 const demoProfileImages = {
@@ -100,7 +102,10 @@ function updateAuthUI() {
   document.querySelectorAll("[data-auth-label]").forEach((element) => {
     element.textContent = currentUser ? "Log out" : "Log in";
   });
-  if (!currentUser) updateMessageBadge(0);
+  if (!currentUser) {
+    updateMessageBadge(0);
+    updateNotificationBadge(0);
+  }
 }
 
 function updateMessageBadge(count) {
@@ -122,6 +127,24 @@ async function loadMessageBadge() {
   } catch (error) {
     notify(error.message);
   }
+}
+
+function updateNotificationBadge(count) {
+  notificationsUnreadCount = count;
+  document.querySelectorAll("[data-notification-badge]").forEach((badge) => {
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.hidden = count < 1;
+    badge.setAttribute("aria-label", count ? `${count} unread notifications` : "");
+  });
+}
+
+async function loadNotificationBadge() {
+  if (!currentUser) return;
+  const userId = currentUser.id;
+  try {
+    const { unreadCount } = await api("/notifications");
+    if (currentUser?.id === userId) updateNotificationBadge(unreadCount);
+  } catch (error) { console.error("Unable to load notification badge", error); }
 }
 
 function imageSource(path) {
@@ -396,6 +419,7 @@ function renderPostDetail(post) {
   const userLink = `/@${encodeURIComponent(post.user.username)}`;
   const comments = post.comments ?? [];
   const liked = Boolean(post.liked);
+  const canFollowAuthor = Boolean(currentUser && currentUser.id !== post.userId && !post.user.isFollowing);
   return `<div class="post-detail-layout" data-post-id="${escapeHTML(post.id)}">
     <section class="post-detail-media" aria-label="Post image">
       <img class="detail-image" ${postImageAttributes(post)} alt="Post by ${escapeHTML(post.user.username)}">
@@ -407,6 +431,7 @@ function renderPostDetail(post) {
           <a href="${userLink}" data-profile="${escapeHTML(post.user.username)}"><strong>${escapeHTML(post.user.username)}</strong></a>
           ${post.user.fullName ? `<span>${escapeHTML(post.user.fullName)}</span>` : ""}
         </div>
+        ${canFollowAuthor ? `<button class="button button-coral detail-follow-button" data-action="follow-post-author" data-user-id="${escapeHTML(post.user.id)}">Follow</button>` : ""}
         ${renderPostMenu(post)}
       </header>
       <div class="post-detail-scroll">
@@ -550,9 +575,9 @@ function showStory(groupIndex, storyIndex = 0) {
     : `<img class="story-media" src="${escapeHTML(imageSource(story.media_url))}" alt="${escapeHTML(story.caption || "Story")}">`;
   document.querySelector("#story-viewer").innerHTML = `<div class="story-progress">${group.stories.map((_, i) => `<i class="${i < storyIndex ? "done" : i === storyIndex ? "active" : ""}"></i>`).join("")}</div><header class="story-header">${avatar(group.user, "avatar")}<strong>@${escapeHTML(group.user.username)}</strong><time>${new Date(story.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time><button data-action="close-story" aria-label="Close story">×</button></header><div class="story-stage">${media}<button class="story-nav story-prev" data-action="previous-story" aria-label="Previous story"></button><button class="story-nav story-next" data-action="next-story" aria-label="Next story"></button></div>${story.caption ? `<p class="story-caption">${escapeHTML(story.caption)}</p>` : ""}<footer class="story-footer">${isMine ? `<button data-action="delete-story" data-story-id="${escapeHTML(story.id)}">Delete story</button>` : `<button data-action="react-story" data-story-id="${escapeHTML(story.id)}" data-reaction="❤️">♥</button><form id="story-reply-form"><input name="reply" maxlength="2200" placeholder="Send a reply…"><button>Send</button></form>`}</footer>`;
   api(`/stories/${story.id}/views`, { method: "POST" }).catch(() => {});
-  const video = document.querySelector(".story-media");
-  if (video?.tagName === "VIDEO") video.addEventListener("ended", nextStory, { once: true });
-  else storyTimer = setTimeout(nextStory, 5000);
+  // Every Story, including video, uses the same ten-second progression so the
+  // visible segment and the navigation stay in sync.
+  storyTimer = setTimeout(nextStory, storyDurationMs);
 }
 function nextStory() {
   const group = storyGroups[activeStoryGroup];
@@ -590,6 +615,7 @@ async function renderNotifications() {
       return `<button class="notification-item ${notification.isRead ? "" : "unread"}" data-action="open-notification" data-post-id="${escapeHTML(notification.postId || "")}">${avatar(notification.sender, "avatar")}<span><strong>@${escapeHTML(notification.sender.username)}</strong> ${action}<small>${formattedTimestamp(notification.createdAt)}</small></span></button>`;
     }).join("")}</section>` : emptyState("A quieter kind of social", "Likes, comments, and new followers will appear here.");
     await api("/notifications/read", { method: "POST" });
+    updateNotificationBadge(0);
   } catch (error) { showError(error); }
   finally { view.setAttribute("aria-busy", "false"); }
 }
@@ -1031,6 +1057,13 @@ document.addEventListener("click", async (event) => {
     else if (action === "open-notification") {
       if (control.dataset.postId) return openPost(control.dataset.postId);
     }
+    else if (action === "follow-post-author") {
+      if (!currentUser) return openAuth();
+      control.disabled = true;
+      await api(`/users/${control.dataset.userId}/follow`, { method: "POST" });
+      await openPost(card?.dataset.postId || postDialog.dataset.postId);
+      notify("You’re now following this account.");
+    }
     else if (action === "create-story") {
       if (!currentUser) return openAuth();
       openDialog("create-story-dialog");
@@ -1258,7 +1291,7 @@ document.querySelector("#story-viewer").addEventListener("pointerup", () => {
   storyPaused = false;
   const media = document.querySelector(".story-media");
   if (media?.tagName === "VIDEO") media.play().catch(() => {});
-  else storyTimer = setTimeout(nextStory, 5000);
+  else storyTimer = setTimeout(nextStory, storyDurationMs);
 });
 
 document.querySelector("#profile-form").addEventListener("submit", async (event) => {
@@ -1480,6 +1513,16 @@ document.querySelector("#new-message-search-input").addEventListener("input", (e
   }, 220);
 });
 
+document.querySelectorAll('[data-page="notifications"]').forEach((button) => {
+  if (!button.querySelector("[data-notification-badge]")) {
+    const badge = document.createElement("span");
+    badge.className = "notification-badge";
+    badge.dataset.notificationBadge = "";
+    badge.hidden = true;
+    button.append(badge);
+  }
+});
+
 document.documentElement.dataset.theme = localStorage.getItem(themeKey) || "light";
 document.querySelectorAll("[data-theme-label]").forEach((label) => {
   label.textContent = document.documentElement.dataset.theme === "dark" ? "Light mode" : "Dark mode";
@@ -1492,7 +1535,7 @@ if (localStorage.getItem(tokenKey)) {
     .catch(() => localStorage.removeItem(tokenKey))
     .finally(async () => {
       await openPage("feed");
-      if (currentUser) await loadMessageBadge();
+      if (currentUser) await Promise.all([loadMessageBadge(), loadNotificationBadge()]);
       const sharedPostId = new URLSearchParams(window.location.search).get("post");
       if (sharedPostId) await openPost(sharedPostId);
     });
