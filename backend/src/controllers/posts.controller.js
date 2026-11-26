@@ -110,7 +110,7 @@ export async function toggleLike(request, response) {
   const postId = parseBigIntId(request.params.id, "post ID");
   const post = await prisma.post.findUnique({
     where: { id: postId },
-    select: { id: true },
+    select: { id: true, userId: true },
   });
   if (!post) throw new AppError(404, "Post not found");
   const relation = {
@@ -121,6 +121,11 @@ export async function toggleLike(request, response) {
     await prisma.like.delete({ where: relation });
   } else {
     await prisma.like.create({ data: { postId: post.id, userId: request.userId } });
+    if (post.userId !== request.userId) {
+      await prisma.notifications.create({
+        data: { recipient_id: post.userId, sender_id: request.userId, type: "like", post_id: post.id },
+      });
+    }
   }
   const likesCount = await prisma.like.count({ where: { postId: post.id } });
   response.json({ liked: !existing, likesCount });
@@ -132,12 +137,17 @@ export async function addComment(request, response) {
     throw new AppError(400, "Comment must be between 1 and 2200 characters");
   }
   const postId = parseBigIntId(request.params.id, "post ID");
-  const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true } });
+  const post = await prisma.post.findUnique({ where: { id: postId }, select: { id: true, userId: true } });
   if (!post) throw new AppError(404, "Post not found");
   const comment = await prisma.comment.create({
     data: { postId: post.id, userId: request.userId, content },
     include: { user: { select: { id: true, username: true, profilePicture: true } } },
   });
+  if (post.userId !== request.userId) {
+    await prisma.notifications.create({
+      data: { recipient_id: post.userId, sender_id: request.userId, type: "comment", post_id: post.id, comment_id: comment.id },
+    });
+  }
   response.status(201).json({ comment: toJsonSafe(comment) });
 }
 

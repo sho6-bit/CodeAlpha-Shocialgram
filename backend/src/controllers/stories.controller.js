@@ -30,7 +30,7 @@ export async function getStoryFeed(request, response) {
     group.stories.push(item);
     if (!item.viewed) group.hasUnseen = true;
   }
-  response.json({ storyGroups: [...groups.values()].sort((a, b) => Number(b.hasUnseen) - Number(a.hasUnseen)) });
+  response.json(toJsonSafe({ storyGroups: [...groups.values()].sort((a, b) => Number(b.hasUnseen) - Number(a.hasUnseen)) }));
 }
 
 export async function createStory(request, response) {

@@ -77,6 +77,30 @@ h2 { font: 600 27px Georgia, serif; }
 #view { max-width: 1110px; margin: auto; }
 .feed-layout { display: grid; grid-template-columns: minmax(0, 620px) 260px; justify-content: center; gap: 52px; }
 .feed-column { min-width: 0; }
+.stories-strip { margin-bottom: 30px; padding: 17px 15px 15px; border: 1px solid var(--line); border-radius: 18px; background: color-mix(in srgb, var(--card) 86%, transparent); box-shadow: var(--shadow); }
+.stories-heading { display: flex; align-items: baseline; gap: 10px; margin: 0 3px 13px; }
+.stories-heading h2 { margin: 0; font-size: 18px; }
+.stories-heading span { color: var(--muted); font-size: 10px; }
+.stories-row { display: flex; gap: 13px; overflow-x: auto; padding: 1px 2px 5px; scrollbar-width: thin; }
+.story-bubble { position: relative; display: grid; justify-items: center; gap: 6px; width: 66px; flex: 0 0 66px; padding: 0; border: 0; background: transparent; color: var(--ink); cursor: pointer; }
+.story-bubble small { width: 100%; overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.story-ring { display: block; width: 58px; height: 58px; padding: 3px; border: 1px solid var(--line); border-radius: 50%; background: var(--card); }
+.story-ring.unseen { background: linear-gradient(135deg, #f95c4b, #ffb16d 46%, #9b5de5); border: 0; }
+.story-ring .avatar { border: 2px solid var(--card); }
+.story-add i { position: absolute; top: 40px; right: 3px; display: grid; width: 19px; height: 19px; place-items: center; border: 2px solid var(--card); border-radius: 50%; background: var(--coral); color: #fff; font: 700 17px/1 Arial, sans-serif; font-style: normal; }
+.story-dialog { width: min(430px, 100vw); height: min(780px, 100dvh); max-width: none; max-height: none; padding: 0; overflow: hidden; border: 0; border-radius: 22px; background: #111; color: #fff; box-shadow: 0 25px 80px rgba(0,0,0,.45); }
+.story-dialog::backdrop { background: rgba(6, 7, 12, .83); backdrop-filter: blur(7px); }
+.story-viewer { position: relative; display: grid; width: 100%; height: 100%; overflow: hidden; background: #15151a; }
+.story-stage { position: absolute; inset: 0; }
+.story-media { width: 100%; height: 100%; object-fit: contain; background: #111; }
+.story-progress { position: absolute; z-index: 3; top: 13px; right: 14px; left: 14px; display: flex; gap: 4px; }
+.story-progress i { height: 3px; flex: 1; border-radius: 99px; background: rgba(255,255,255,.35); }
+.story-progress i.done { background: #fff; }.story-progress i.active { background: linear-gradient(90deg, #fff 45%, rgba(255,255,255,.35) 45%); }
+.story-header { position: absolute; z-index: 3; top: 27px; right: 16px; left: 16px; display: flex; align-items: center; gap: 9px; text-shadow: 0 1px 6px #000; }
+.story-header .avatar { width: 34px; height: 34px; flex: 0 0 34px; border: 1px solid rgba(255,255,255,.7); }.story-header strong { font-size: 12px; }.story-header time { color: rgba(255,255,255,.76); font-size: 10px; }.story-header button { width: 29px; height: 29px; margin-left: auto; border: 0; border-radius: 50%; background: rgba(0,0,0,.3); color: #fff; font-size: 22px; cursor: pointer; }
+.story-nav { position: absolute; z-index: 2; top: 0; bottom: 0; width: 36%; border: 0; background: transparent; cursor: pointer; }.story-prev { left: 0; }.story-next { right: 0; }
+.story-caption { position: absolute; z-index: 3; right: 19px; bottom: 78px; left: 19px; margin: 0; color: #fff; font-size: 13px; line-height: 1.5; text-align: center; text-shadow: 0 1px 5px #000; }
+.story-footer { position: absolute; z-index: 4; right: 14px; bottom: 16px; left: 14px; display: flex; gap: 8px; align-items: center; }.story-footer > button { min-height: 39px; padding: 0 14px; border: 0; border-radius: 99px; background: rgba(255,255,255,.18); color: #fff; cursor: pointer; }.story-footer > button.reacted { color: #ff9d92; }.story-footer form { display: flex; flex: 1; gap: 7px; }.story-footer input { min-width: 0; height: 40px; flex: 1; padding: 0 13px; border: 1px solid rgba(255,255,255,.38); border-radius: 99px; background: rgba(0,0,0,.25); color: #fff; outline: 0; }.story-footer input::placeholder { color: rgba(255,255,255,.74); }.story-footer form button { padding: 0 11px; border: 0; background: transparent; color: #fff; font-weight: 700; cursor: pointer; }
 .feed-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .feed-heading h2 { margin: 0; font-size: 23px; }
 .feed-heading p { margin: 5px 0 0; color: var(--muted); font-size: 12px; }
@@ -110,6 +134,9 @@ h2 { font: 600 27px Georgia, serif; }
 .empty-emoji { font-size: 32px; }
 .empty-state h2 { margin: 14px 0 8px; }
 .empty-state p { max-width: 370px; margin: auto; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.notifications-list { display: grid; max-width: 680px; margin: 0 auto; border: 1px solid var(--line); border-radius: 18px; overflow: hidden; background: var(--card); box-shadow: var(--shadow); }
+.notification-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 17px; border: 0; border-bottom: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.notification-item:last-child { border-bottom: 0; }.notification-item.unread { background: color-mix(in srgb, var(--coral) 8%, var(--card)); }.notification-item:hover { background: var(--soft); }.notification-item .avatar { width: 42px; height: 42px; flex: 0 0 42px; }.notification-item span { font-size: 12px; line-height: 1.45; }.notification-item small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; }
 .skeleton { height: 340px; margin-bottom: 20px; border-radius: 18px; background: linear-gradient(90deg, var(--soft), var(--stone), var(--soft)); background-size: 200% 100%; animation: shimmer 1.3s infinite; }
 @keyframes shimmer { to { background-position: -200% 0; } }
 .explore-grid, .profile-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
@@ -242,6 +269,8 @@ h2 { font: 600 27px Georgia, serif; }
   .search-wrap:focus-within input { display: block; }
   .desktop-theme, .topbar-actions > .button { display: none; }
   .feed-layout { display: block; }
+  .stories-strip { margin: 0 -3px 22px; padding: 13px 10px 11px; border-radius: 14px; box-shadow: none; }
+  .stories-row { gap: 11px; }.story-bubble { width: 62px; flex-basis: 62px; }.story-ring { width: 54px; height: 54px; }.story-dialog { width: 100vw; height: 100dvh; border-radius: 0; }
   .feed-heading { margin-bottom: 12px; }
   .post-card { margin-inline: -15px; border-inline: 0; border-radius: 0; box-shadow: none; }
   .post-image { max-height: 600px; }

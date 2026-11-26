@@ -108,6 +108,9 @@ export async function toggleFollow(request, response) {
     await prisma.follow.delete({ where: relation });
   } else {
     await prisma.follow.create({ data: { followerId: request.userId, followingId: targetId } });
+    await prisma.notifications.create({
+      data: { recipient_id: targetId, sender_id: request.userId, type: "follow" },
+    });
   }
   const [followersCount, followingCount] = await Promise.all([
     prisma.follow.count({ where: { followingId: targetId } }),

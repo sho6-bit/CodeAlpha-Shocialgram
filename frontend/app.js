@@ -491,8 +491,7 @@ async function openPage(page, username = null) {
   if (page === "explore") return renderExplore();
   if (page === "profile") return renderProfile(username);
   if (page === "messages") return renderMessages();
-  setPageTitle("Notifications");
-  view.innerHTML = emptyState("A quieter kind of social", "Notifications will appear here when someone likes, comments on, or follows you.");
+  if (page === "notifications") return renderNotifications();
 }
 
 async function renderFeed() {
@@ -504,7 +503,15 @@ async function renderFeed() {
   }
   showLoading();
   try {
-    const [{ posts }, { storyGroups: groups }] = await Promise.all([api("/posts/feed"), api("/stories/feed")]);
+    const { posts } = await api("/posts/feed");
+    let groups = [];
+    try {
+      ({ storyGroups: groups } = await api("/stories/feed"));
+    } catch (storyError) {
+      // Stories are an enhancement to Home; a temporarily unavailable Stories
+      // endpoint must not hide the established post feed.
+      console.error("Unable to load stories", storyError);
+    }
     storyGroups = groups;
     const timeline = posts.length
       ? posts.map(renderPost).join("")
@@ -565,6 +572,24 @@ async function renderExplore() {
     view.innerHTML = posts.length
       ? `<div class="explore-grid">${posts.map((post) => renderPostTile(post)).join("")}</div>`
       : emptyState("The good stuff is just starting", "When people start sharing, their recent photos will find a home here.");
+  } catch (error) { showError(error); }
+  finally { view.setAttribute("aria-busy", "false"); }
+}
+
+async function renderNotifications() {
+  setPageTitle("Notifications");
+  if (!currentUser) {
+    view.innerHTML = emptyState("Stay in the loop", "Sign in to see likes, comments, and new followers.", "Log in", "auth");
+    return;
+  }
+  showLoading();
+  try {
+    const { notifications } = await api("/notifications");
+    view.innerHTML = notifications.length ? `<section class="notifications-list">${notifications.map((notification) => {
+      const action = notification.type === "like" ? "liked your post" : notification.type === "comment" ? "commented on your post" : "started following you";
+      return `<button class="notification-item ${notification.isRead ? "" : "unread"}" data-action="open-notification" data-post-id="${escapeHTML(notification.postId || "")}">${avatar(notification.sender, "avatar")}<span><strong>@${escapeHTML(notification.sender.username)}</strong> ${action}<small>${formattedTimestamp(notification.createdAt)}</small></span></button>`;
+    }).join("")}</section>` : emptyState("A quieter kind of social", "Likes, comments, and new followers will appear here.");
+    await api("/notifications/read", { method: "POST" });
   } catch (error) { showError(error); }
   finally { view.setAttribute("aria-busy", "false"); }
 }
@@ -1003,6 +1028,29 @@ document.addEventListener("click", async (event) => {
       syncDialogScrollLock();
     }
     else if (action === "close-post-detail") closePostDialog();
+    else if (action === "open-notification") {
+      if (control.dataset.postId) return openPost(control.dataset.postId);
+    }
+    else if (action === "create-story") {
+      if (!currentUser) return openAuth();
+      openDialog("create-story-dialog");
+    } else if (action === "open-story") {
+      return openStoryViewer(Number(control.dataset.storyGroup));
+    } else if (action === "close-story") {
+      closeStoryViewer();
+    } else if (action === "next-story") {
+      nextStory();
+    } else if (action === "previous-story") {
+      previousStory();
+    } else if (action === "react-story") {
+      const result = await api(`/stories/${control.dataset.storyId}/reactions`, { method: "POST", body: JSON.stringify({ reaction: control.dataset.reaction }) });
+      control.classList.toggle("reacted", result.reacted);
+    } else if (action === "delete-story") {
+      if (!confirm("Delete this story?")) return;
+      await api(`/stories/${control.dataset.storyId}`, { method: "DELETE" });
+      closeStoryViewer();
+      await renderFeed();
+    }
     else if (action === "retry-post-detail") return openPost(control.dataset.id);
     else if (action === "focus-comment") document.querySelector("#post-comment-input")?.focus();
     else if (action === "create") {
@@ -1165,6 +1213,52 @@ document.querySelector("#create-form").addEventListener("submit", async (event) 
     notify("Your post is live.");
     openPage("feed");
   } catch (error) { notify(error.message); }
+});
+
+document.querySelector("#create-story-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const media = form.elements.media.files[0];
+  if (!media) return notify("Choose a photo or video for your story.");
+  const body = new FormData(form);
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    await api("/stories", { method: "POST", body });
+    form.reset();
+    document.querySelector("#create-story-dialog").close();
+    syncDialogScrollLock();
+    await renderFeed();
+    notify("Your story is live for 24 hours.");
+  } catch (error) { notify(error.message); }
+  finally { submit.disabled = false; }
+});
+
+document.addEventListener("submit", async (event) => {
+  if (event.target.id !== "story-reply-form") return;
+  event.preventDefault();
+  const story = activeStory();
+  const content = event.target.elements.reply.value.trim();
+  if (!story || !content) return;
+  try {
+    await api(`/stories/${story.id}/replies`, { method: "POST", body: JSON.stringify({ content }) });
+    event.target.reset();
+    notify("Reply sent.");
+  } catch (error) { notify(error.message); }
+});
+
+storyDialog.addEventListener("close", stopStoryTimer);
+storyDialog.addEventListener("cancel", (event) => { event.preventDefault(); closeStoryViewer(); });
+document.querySelector("#story-viewer").addEventListener("pointerdown", (event) => {
+  if (event.target.closest("button, input, form")) return;
+  storyPaused = true; stopStoryTimer(); document.querySelector(".story-media")?.pause?.();
+});
+document.querySelector("#story-viewer").addEventListener("pointerup", () => {
+  if (!storyPaused) return;
+  storyPaused = false;
+  const media = document.querySelector(".story-media");
+  if (media?.tagName === "VIDEO") media.play().catch(() => {});
+  else storyTimer = setTimeout(nextStory, 5000);
 });
 
 document.querySelector("#profile-form").addEventListener("submit", async (event) => {
