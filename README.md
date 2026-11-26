@@ -60,6 +60,8 @@ hashes.
 - `GET|PATCH|DELETE /api/posts/:id`
 - `POST /api/posts/:id/likes`, `POST /api/posts/:id/comments`
 - `DELETE /api/posts/:id/comments/:commentId`
+- `GET|POST /api/messages`, `GET /api/messages/:userId`
+- `POST /api/messages/share-post`
 
 The Prisma models use cascading foreign keys, unique email/username and
 per-user like/follow constraints, and indexes for feed, post, and connection

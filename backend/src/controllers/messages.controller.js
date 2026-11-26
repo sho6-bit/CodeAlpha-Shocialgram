@@ -140,7 +140,6 @@ export async function getConversation(request, response) {
       ],
     },
     orderBy: [{ created_at: "desc" }, { id: "desc" }],
-    take: 200,
     include: messageRelations,
   });
 

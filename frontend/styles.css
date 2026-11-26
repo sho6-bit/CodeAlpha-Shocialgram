@@ -221,7 +221,6 @@ h2 { font: 600 27px Georgia, serif; }
   .app-main { margin: 0; padding: 23px 15px 90px; }
   .topbar { align-items: flex-end; margin-bottom: 23px; }
   .topbar h1 { font-size: 27px; }
-  .topbar .eyebrow { font-size: 8px; }
   .topbar-actions { gap: 7px; }
   .search-wrap { width: 39px; height: 39px; padding: 0; justify-content: center; border: 0; background: transparent; }
   .search-wrap span { font-size: 24px; }
@@ -364,7 +363,6 @@ h2 { font: 600 27px Georgia, serif; }
 .messages-layout { display: grid; grid-template-columns: minmax(270px, 350px) minmax(0, 1fr); height: min(700px, calc(100dvh - 190px)); min-height: 460px; overflow: hidden; border: 1px solid var(--line); border-radius: 18px; background: var(--card); box-shadow: var(--shadow); }
 .messages-inbox { display: flex; min-width: 0; min-height: 0; flex-direction: column; border-right: 1px solid var(--line); }
 .messages-inbox-header { display: flex; min-height: 82px; align-items: center; justify-content: space-between; gap: 12px; padding: 17px 18px; border-bottom: 1px solid var(--line); }
-.messages-inbox-header .eyebrow { margin-bottom: 5px; font-size: 8px; }
 .messages-inbox-header h2 { overflow: hidden; margin: 0; font: 600 18px Arial, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .new-message-button { display: grid; width: 36px; height: 36px; flex: 0 0 36px; place-items: center; border: 1px solid var(--line); border-radius: 50%; background: var(--paper); color: var(--ink); font-size: 22px; cursor: pointer; transition: border-color .15s, color .15s, transform .15s; }
 .new-message-button:hover { transform: translateY(-1px); border-color: var(--coral); color: var(--coral); }

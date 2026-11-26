@@ -108,8 +108,10 @@ function updateMessageBadge(count) {
 
 async function loadMessageBadge() {
   if (!currentUser) return;
+  const userId = currentUser.id;
   try {
     const { unreadCount } = await api("/messages");
+    if (currentUser?.id !== userId) return;
     updateMessageBadge(unreadCount);
   } catch (error) {
     notify(error.message);
@@ -166,8 +168,7 @@ function formattedTimestamp(value) {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
 }
 
-function setPageTitle(kicker, title) {
-  document.querySelector("#page-kicker").textContent = kicker;
+function setPageTitle(title) {
   document.querySelector("#page-title").textContent = title;
 }
 
@@ -261,7 +262,7 @@ function renderMessagesLayout() {
   view.innerHTML = `<div class="messages-layout ${hasActiveConversation ? "has-active-conversation" : ""}">
     <aside class="messages-inbox" aria-label="Conversations">
       <header class="messages-inbox-header">
-        <div><p class="eyebrow">YOUR INBOX</p><h2>${escapeHTML(currentUser.username)}</h2></div>
+        <div><h2>${escapeHTML(currentUser.username)}</h2></div>
         <button class="new-message-button" type="button" data-action="new-message" aria-label="New message">＋</button>
       </header>
       <label class="message-search"><span aria-hidden="true">⌕</span><input id="message-conversation-search" type="search" value="${escapeHTML(messageSearchQuery)}" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations"></label>
@@ -305,7 +306,7 @@ async function openMessageConversation(user) {
 }
 
 async function renderMessages() {
-  setPageTitle("YOUR CONVERSATIONS", "Messages");
+  setPageTitle("Messages");
   activeConversation = null;
   messageSearchQuery = "";
   const requestId = ++messagePageRequest;
@@ -484,12 +485,12 @@ async function openPage(page, username = null) {
   if (page === "explore") return renderExplore();
   if (page === "profile") return renderProfile(username);
   if (page === "messages") return renderMessages();
-  setPageTitle("STAY IN THE LOOP", "Notifications");
+  setPageTitle("Notifications");
   view.innerHTML = emptyState("A quieter kind of social", "Notifications will appear here when someone likes, comments on, or follows you.");
 }
 
 async function renderFeed() {
-  setPageTitle("YOUR DAILY EDIT", "Home");
+  setPageTitle("Home");
   if (!currentUser) {
     view.innerHTML = `<div class="feed-layout"><div class="feed-column">${emptyState("Good things are happening here", "Sign in to see the posts from people you follow and share your own perspective.", "Log in", "auth")}</div></div>`;
     view.setAttribute("aria-busy", "false");
@@ -514,7 +515,7 @@ async function renderFeed() {
 }
 
 async function renderExplore() {
-  setPageTitle("A LITTLE INSPIRATION", "Explore");
+  setPageTitle("Explore");
   showLoading();
   try {
     const { posts } = await api("/posts/explore");
@@ -529,7 +530,7 @@ async function renderProfile(username) {
   showLoading();
   try {
     const { user, counts, isFollowing, posts } = await api(`/users/${encodeURIComponent(username)}`);
-    setPageTitle("A LITTLE ABOUT THEM", `@${user.username}`);
+    setPageTitle(`@${user.username}`);
     const isOwn = currentUser?.id === user.id;
     view.innerHTML = `<section class="profile-head">
       <div class="profile-avatar">${avatar(user, "avatar")}</div>
@@ -977,6 +978,7 @@ document.addEventListener("click", async (event) => {
       document.querySelector("#new-message-dialog").close();
       syncDialogScrollLock();
       if (currentPage !== "messages") await openPage("messages");
+      if (currentPage !== "messages") return;
       return openMessageConversation(user);
     } else if (action === "select-conversation") {
       const conversation = messageConversations.find(({ user }) => user.id === control.dataset.userId);
