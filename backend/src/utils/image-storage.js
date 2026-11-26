@@ -42,10 +42,26 @@ export async function saveImage(file) {
   return `/uploads/${filename}`;
 }
 
+function detectStoryMedia(buffer, mimetype) {
+  if (mimetype.startsWith("image/")) return detectImage(buffer);
+  if (mimetype === "video/mp4" && buffer.length >= 12 && buffer.toString("ascii", 4, 8) === "ftyp") return "mp4";
+  if (mimetype === "video/webm" && buffer.length >= 4 && buffer.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return "webm";
+  throw new AppError(400, "The uploaded file is not a supported image or video");
+}
+
+export async function saveStoryMedia(file) {
+  if (!file?.buffer) throw new AppError(400, "A story image or video is required");
+  const extension = detectStoryMedia(file.buffer, file.mimetype);
+  await mkdir(uploadsDirectory, { recursive: true });
+  const filename = `${randomUUID()}.${extension}`;
+  await writeFile(path.join(uploadsDirectory, filename), file.buffer, { flag: "wx" });
+  return { mediaUrl: `/uploads/${filename}`, mediaType: extension === "mp4" || extension === "webm" ? "video" : "image" };
+}
+
 export async function removeImage(imageUrl) {
   if (!imageUrl?.startsWith("/uploads/")) return;
   const filename = path.basename(imageUrl);
-  if (!/^[\da-f-]+\.(jpg|png|webp)$/i.test(filename)) return;
+  if (!/^[\da-f-]+\.(jpg|png|webp|mp4|webm)$/i.test(filename)) return;
   try {
     await unlink(path.join(uploadsDirectory, filename));
   } catch (error) {

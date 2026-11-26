@@ -4,6 +4,7 @@ const view = document.querySelector("#view");
 const toast = document.querySelector("#toast");
 const dialogs = [...document.querySelectorAll("dialog")];
 const postDialog = document.querySelector("#post-dialog");
+const storyDialog = document.querySelector("#story-dialog");
 let currentUser = null;
 let currentPage = "feed";
 let profileUsername = null;
@@ -31,6 +32,11 @@ let messageSearchQuery = "";
 let newMessageUsers = [];
 let newMessageRequest = 0;
 let newMessageSearchTimer;
+let storyGroups = [];
+let activeStoryGroup = 0;
+let activeStoryIndex = 0;
+let storyTimer;
+let storyPaused = false;
 const selectedImages = new WeakMap();
 
 const demoProfileImages = {
@@ -498,7 +504,8 @@ async function renderFeed() {
   }
   showLoading();
   try {
-    const { posts } = await api("/posts/feed");
+    const [{ posts }, { storyGroups: groups }] = await Promise.all([api("/posts/feed"), api("/stories/feed")]);
+    storyGroups = groups;
     const timeline = posts.length
       ? posts.map(renderPost).join("")
       : emptyState(
@@ -507,12 +514,48 @@ async function renderFeed() {
           "Explore people",
           "go-explore",
         );
-    view.innerHTML = `<div class="feed-layout"><div class="feed-column"><div class="feed-heading"><div><h2>Fresh perspectives</h2><p>A little inspiration from your corner of the world.</p></div></div>${timeline}</div><aside class="side-card"><h3>Make room for good things.</h3><p>Follow people whose perspective makes your day a little more interesting.</p><button class="button button-outline" data-action="go-explore">Find your people</button></aside></div>`;
+    view.innerHTML = `<div class="feed-layout"><div class="feed-column">${renderStories(groups)}<div class="feed-heading"><div><h2>Fresh perspectives</h2><p>A little inspiration from your corner of the world.</p></div></div>${timeline}</div><aside class="side-card"><h3>Make room for good things.</h3><p>Follow people whose perspective makes your day a little more interesting.</p><button class="button button-outline" data-action="go-explore">Find your people</button></aside></div>`;
   } catch (error) { showError(error); }
   finally {
     view.setAttribute("aria-busy", "false");
   }
 }
+
+function renderStories(groups) {
+  const mine = groups.find((group) => group.user.id === currentUser.id);
+  const entries = [
+    `<button class="story-bubble story-add" data-action="create-story" aria-label="Create story"><span class="story-ring">${avatar(currentUser, "avatar")}</span><i>+</i><small>Your story</small></button>`,
+    ...groups.map((group, index) => `<button class="story-bubble" data-action="open-story" data-story-group="${index}" aria-label="View ${escapeHTML(group.user.username)}'s stories"><span class="story-ring ${group.hasUnseen ? "unseen" : ""}">${avatar(group.user, "avatar")}</span><small>${escapeHTML(group.user.id === currentUser.id ? "Your story" : group.user.username)}</small></button>`),
+  ];
+  return `<section class="stories-strip" aria-label="Stories"><div class="stories-heading"><h2>Stories</h2>${mine ? "" : '<span>Share what’s happening now</span>'}</div><div class="stories-row">${entries.join("")}</div></section>`;
+}
+
+function stopStoryTimer() { clearTimeout(storyTimer); storyTimer = undefined; }
+function activeStory() { return storyGroups[activeStoryGroup]?.stories[activeStoryIndex]; }
+function showStory(groupIndex, storyIndex = 0) {
+  activeStoryGroup = groupIndex; activeStoryIndex = storyIndex; storyPaused = false;
+  const group = storyGroups[groupIndex]; const story = activeStory();
+  if (!group || !story) return closeStoryViewer();
+  stopStoryTimer();
+  const isMine = story.user_id === currentUser.id;
+  const media = story.media_type === "video"
+    ? `<video class="story-media" src="${escapeHTML(imageSource(story.media_url))}" autoplay playsinline></video>`
+    : `<img class="story-media" src="${escapeHTML(imageSource(story.media_url))}" alt="${escapeHTML(story.caption || "Story")}">`;
+  document.querySelector("#story-viewer").innerHTML = `<div class="story-progress">${group.stories.map((_, i) => `<i class="${i < storyIndex ? "done" : i === storyIndex ? "active" : ""}"></i>`).join("")}</div><header class="story-header">${avatar(group.user, "avatar")}<strong>@${escapeHTML(group.user.username)}</strong><time>${new Date(story.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</time><button data-action="close-story" aria-label="Close story">×</button></header><div class="story-stage">${media}<button class="story-nav story-prev" data-action="previous-story" aria-label="Previous story"></button><button class="story-nav story-next" data-action="next-story" aria-label="Next story"></button></div>${story.caption ? `<p class="story-caption">${escapeHTML(story.caption)}</p>` : ""}<footer class="story-footer">${isMine ? `<button data-action="delete-story" data-story-id="${escapeHTML(story.id)}">Delete story</button>` : `<button data-action="react-story" data-story-id="${escapeHTML(story.id)}" data-reaction="❤️">♥</button><form id="story-reply-form"><input name="reply" maxlength="2200" placeholder="Send a reply…"><button>Send</button></form>`}</footer>`;
+  api(`/stories/${story.id}/views`, { method: "POST" }).catch(() => {});
+  const video = document.querySelector(".story-media");
+  if (video?.tagName === "VIDEO") video.addEventListener("ended", nextStory, { once: true });
+  else storyTimer = setTimeout(nextStory, 5000);
+}
+function nextStory() {
+  const group = storyGroups[activeStoryGroup];
+  if (activeStoryIndex + 1 < group.stories.length) return showStory(activeStoryGroup, activeStoryIndex + 1);
+  if (activeStoryGroup + 1 < storyGroups.length) return showStory(activeStoryGroup + 1, 0);
+  closeStoryViewer();
+}
+function previousStory() { if (activeStoryIndex) showStory(activeStoryGroup, activeStoryIndex - 1); else if (activeStoryGroup) showStory(activeStoryGroup - 1, storyGroups[activeStoryGroup - 1].stories.length - 1); }
+function closeStoryViewer() { stopStoryTimer(); if (storyDialog.open) storyDialog.close(); }
+function openStoryViewer(index) { if (!storyGroups[index]) return; if (!storyDialog.open) storyDialog.showModal(); syncDialogScrollLock(); showStory(index); }
 
 async function renderExplore() {
   setPageTitle("Explore");

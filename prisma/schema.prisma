@@ -27,6 +27,9 @@ model User {
   notifications_notifications_sender_idTousers    notifications[] @relation("notifications_sender_idTousers")
   posts                                           Post[]
   stories                                         stories[]
+  storyViews                                      story_views[]
+  storyReactions                                  story_reactions[]
+  storyReplies                                    story_replies[]
 
   @@map("users")
 }
@@ -120,4 +123,46 @@ model stories {
   created_at DateTime @default(now()) @db.Timestamptz(6)
   expires_at DateTime @default(dbgenerated("(CURRENT_TIMESTAMP + '24:00:00'::interval)")) @db.Timestamptz(6)
   users      User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_stories_users")
+  views      story_views[]
+  reactions  story_reactions[]
+  replies    story_replies[]
+
+  @@index([user_id, expires_at], map: "idx_stories_user_expires")
+  @@index([expires_at], map: "idx_stories_expires")
+}
+
+model story_views {
+  story_id BigInt   
+  user_id  BigInt
+  viewed_at DateTime @default(now()) @db.Timestamptz(6)
+  story    stories  @relation(fields: [story_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_views_story")
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_views_user")
+
+  @@id([story_id, user_id], map: "pk_story_views")
+  @@index([user_id, viewed_at], map: "idx_story_views_user_viewed")
+}
+
+model story_reactions {
+  id         BigInt   @id @default(autoincrement())
+  story_id   BigInt
+  user_id    BigInt
+  reaction   String   @db.VarChar(32)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  story      stories  @relation(fields: [story_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_reactions_story")
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_reactions_user")
+
+  @@unique([story_id, user_id, reaction], map: "uq_story_reactions_story_user_reaction")
+  @@index([story_id, created_at], map: "idx_story_reactions_story_created")
+}
+
+model story_replies {
+  id         BigInt   @id @default(autoincrement())
+  story_id   BigInt
+  user_id    BigInt
+  content    String
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  story      stories  @relation(fields: [story_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_replies_story")
+  user       User     @relation(fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_story_replies_user")
+
+  @@index([story_id, created_at], map: "idx_story_replies_story_created")
 }
