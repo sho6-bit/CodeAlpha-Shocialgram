@@ -81,6 +81,26 @@ test("createPost rejects missing images before writing to the database", async (
   assert.equal(createCalled, false);
 });
 
+test("createPost rejects a non-image file before writing to the database", async (t) => {
+  const originalCreate = prisma.post.create;
+  let createCalled = false;
+  prisma.post.create = async () => {
+    createCalled = true;
+  };
+  t.after(() => {
+    prisma.post.create = originalCreate;
+  });
+
+  await assert.rejects(
+    createPost(
+      { userId: 42n, body: {}, file: { buffer: Buffer.from("not an image"), mimetype: "image/png" } },
+      responseStub(),
+    ),
+    (error) => error.status === 400,
+  );
+  assert.equal(createCalled, false);
+});
+
 test("createPost removes a saved image if the database insert fails", async (t) => {
   const originalCreate = prisma.post.create;
   let attemptedImageUrl;

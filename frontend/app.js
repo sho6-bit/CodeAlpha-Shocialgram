@@ -22,6 +22,15 @@ let connectionRequestId = 0;
 let shareSearchRequestId = 0;
 let shareSearchUsers = [];
 let shareSearchTimer;
+let messageConversations = [];
+let activeConversation = null;
+let messagesUnreadCount = 0;
+let messagePageRequest = 0;
+let messageHistoryRequest = 0;
+let messageSearchQuery = "";
+let newMessageUsers = [];
+let newMessageRequest = 0;
+let newMessageSearchTimer;
 const selectedImages = new WeakMap();
 
 const demoProfileImages = {
@@ -85,6 +94,26 @@ function updateAuthUI() {
   document.querySelectorAll("[data-auth-label]").forEach((element) => {
     element.textContent = currentUser ? "Log out" : "Log in";
   });
+  if (!currentUser) updateMessageBadge(0);
+}
+
+function updateMessageBadge(count) {
+  messagesUnreadCount = count;
+  document.querySelectorAll("[data-message-badge]").forEach((badge) => {
+    badge.textContent = count > 99 ? "99+" : String(count);
+    badge.hidden = count < 1;
+    badge.setAttribute("aria-label", count ? `${count} unread messages` : "");
+  });
+}
+
+async function loadMessageBadge() {
+  if (!currentUser) return;
+  try {
+    const { unreadCount } = await api("/messages");
+    updateMessageBadge(unreadCount);
+  } catch (error) {
+    notify(error.message);
+  }
 }
 
 function imageSource(path) {
@@ -112,6 +141,14 @@ function postImageSource(post) {
 
 function postImageAttributes(post) {
   return `src="${escapeHTML(postImageSource(post))}"`;
+}
+
+function commentIcon() {
+  return '<svg class="action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M20.2 11.6a8.2 8.2 0 0 1-8.3 8.2 8.5 8.5 0 0 1-3.6-.8L3 20l1.2-4.8a8.1 8.1 0 1 1 16-3.6Z"></path><circle cx="8.1" cy="11.7" r=".75"></circle><circle cx="12" cy="11.7" r=".75"></circle><circle cx="15.9" cy="11.7" r=".75"></circle></svg>';
+}
+
+function shareIcon() {
+  return '<svg class="action-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path></svg>';
 }
 
 document.addEventListener("error", (event) => {
@@ -148,6 +185,151 @@ function emptyState(title, message, actionLabel = "", action = "") {
   return `<div class="empty-state"><div class="empty-emoji">✳</div><h2>${escapeHTML(title)}</h2><p>${escapeHTML(message)}</p>${actionLabel ? `<button class="button button-coral" data-action="${action}">${escapeHTML(actionLabel)}</button>` : ""}</div>`;
 }
 
+function renderMessageContent(content) {
+  return escapeHTML(content).replace(/(https?:\/\/[^\s<]+)/g, (url) => (
+    `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`
+  ));
+}
+
+function renderConversationList() {
+  const query = messageSearchQuery.toLowerCase();
+  const conversations = [...messageConversations];
+  if (activeConversation && !conversations.some(({ user }) => user.id === activeConversation.id)) {
+    conversations.unshift({ user: activeConversation, lastMessage: null, unreadCount: 0 });
+  }
+  const filtered = conversations.filter(({ user, lastMessage }) => (
+    user.username.toLowerCase().includes(query)
+    || (user.fullName || "").toLowerCase().includes(query)
+    || (lastMessage?.content || "").toLowerCase().includes(query)
+  ));
+  if (!filtered.length) {
+    return `<div class="conversation-empty"><p>${conversations.length ? "No conversations match your search." : "No conversations yet."}</p>${conversations.length ? "" : '<button class="text-button" type="button" data-action="new-message">Start a conversation</button>'}</div>`;
+  }
+  return filtered.map(({ user, lastMessage, unreadCount }) => {
+    const preview = lastMessage
+      ? `${lastMessage.senderId === currentUser.id ? "You: " : ""}${lastMessage.content}`
+      : "Start a conversation";
+    return `<button class="conversation-item ${activeConversation?.id === user.id ? "is-active" : ""}" type="button" data-action="select-conversation" data-user-id="${escapeHTML(user.id)}" aria-pressed="${activeConversation?.id === user.id}">
+      <span class="conversation-avatar">${avatar(user)}</span>
+      <span class="conversation-copy">
+        <span class="conversation-title"><strong>${escapeHTML(user.username)}</strong>${lastMessage ? `<time datetime="${escapeHTML(lastMessage.createdAt)}">${formattedDate(lastMessage.createdAt)}</time>` : ""}</span>
+        <span class="conversation-preview">${escapeHTML(preview)}</span>
+      </span>
+      ${unreadCount ? `<span class="conversation-unread" aria-label="${unreadCount} unread messages"></span>` : ""}
+    </button>`;
+  }).join("");
+}
+
+function renderMessageBubbles(messages) {
+  return messages.length
+    ? messages.map((message) => {
+        const outgoing = message.senderId === currentUser.id;
+        return `<article class="message-line ${outgoing ? "is-outgoing" : "is-incoming"}">
+          <div class="message-bubble">${renderMessageContent(message.content)}</div>
+          <time datetime="${escapeHTML(message.createdAt)}">${formattedTimestamp(message.createdAt)}</time>
+        </article>`;
+      }).join("")
+    : '<p class="message-history-empty">No messages yet. Say hello to start the conversation.</p>';
+}
+
+function renderMessageChat(user, messages = null) {
+  if (!user) {
+    return `<div class="messages-empty">
+      <span class="messages-empty-icon">${commentIcon()}</span>
+      <h2>Your messages</h2>
+      <p>Send a message to start a chat</p>
+      <button class="button button-outline" type="button" data-action="new-message">Send message</button>
+    </div>`;
+  }
+  const profileUrl = `/@${encodeURIComponent(user.username)}`;
+  return `<header class="message-chat-header">
+      <button class="chat-back" type="button" data-action="back-to-conversations" aria-label="Back to conversations">‹</button>
+      <a class="chat-avatar" href="${profileUrl}" data-profile="${escapeHTML(user.username)}">${avatar(user)}</a>
+      <a class="chat-user-copy" href="${profileUrl}" data-profile="${escapeHTML(user.username)}"><strong>${escapeHTML(user.username)}</strong><span>${escapeHTML(user.fullName || "")}</span></a>
+    </header>
+    <div id="message-history" class="message-history" role="log" aria-live="polite" aria-label="Conversation with ${escapeHTML(user.username)}">
+      ${messages === null ? '<div class="message-history-loading"><span></span><span></span><span></span></div>' : renderMessageBubbles(messages)}
+    </div>
+    ${messages === null ? "" : `<form id="message-form" class="message-compose" data-user-id="${escapeHTML(user.id)}">
+      <textarea name="content" rows="1" maxlength="2200" placeholder="Write a message..." aria-label="Write a message" required></textarea>
+      <button class="button button-coral" type="submit" disabled>Send</button>
+    </form>`}`;
+}
+
+function renderMessagesLayout() {
+  const hasActiveConversation = Boolean(activeConversation);
+  view.innerHTML = `<div class="messages-layout ${hasActiveConversation ? "has-active-conversation" : ""}">
+    <aside class="messages-inbox" aria-label="Conversations">
+      <header class="messages-inbox-header">
+        <div><p class="eyebrow">YOUR INBOX</p><h2>${escapeHTML(currentUser.username)}</h2></div>
+        <button class="new-message-button" type="button" data-action="new-message" aria-label="New message">＋</button>
+      </header>
+      <label class="message-search"><span aria-hidden="true">⌕</span><input id="message-conversation-search" type="search" value="${escapeHTML(messageSearchQuery)}" placeholder="Search conversations" autocomplete="off" aria-label="Search conversations"></label>
+      <div id="message-conversation-list" class="message-conversation-list">${renderConversationList()}</div>
+    </aside>
+    <section id="message-chat" class="message-chat" aria-label="Chat">${renderMessageChat(activeConversation)}</section>
+  </div>`;
+  view.setAttribute("aria-busy", "false");
+}
+
+async function openMessageConversation(user) {
+  activeConversation = user;
+  const requestId = ++messageHistoryRequest;
+  const chat = document.querySelector("#message-chat");
+  if (!chat) {
+    renderMessagesLayout();
+  }
+  document.querySelector(".messages-layout")?.classList.add("has-active-conversation");
+  document.querySelector("#message-chat").innerHTML = renderMessageChat(user);
+  const list = document.querySelector("#message-conversation-list");
+  if (list) list.innerHTML = renderConversationList();
+
+  try {
+    const { user: conversationUser, messages } = await api(`/messages/${encodeURIComponent(user.id)}`);
+    if (requestId !== messageHistoryRequest || currentPage !== "messages") return;
+    const previousUnreadCount = messageConversations.find(({ user: peer }) => peer.id === user.id)?.unreadCount || 0;
+    messageConversations = messageConversations.map((conversation) => (
+      conversation.user.id === user.id ? { ...conversation, unreadCount: 0 } : conversation
+    ));
+    updateMessageBadge(Math.max(0, messagesUnreadCount - previousUnreadCount));
+    activeConversation = conversationUser;
+    document.querySelector("#message-chat").innerHTML = renderMessageChat(conversationUser, messages);
+    document.querySelector("#message-conversation-list").innerHTML = renderConversationList();
+    document.querySelector("#message-history").scrollTop = document.querySelector("#message-history").scrollHeight;
+  } catch (error) {
+    if (requestId !== messageHistoryRequest || currentPage !== "messages") return;
+    const chatPanel = document.querySelector("#message-chat");
+    if (chatPanel) chatPanel.innerHTML = `<div class="message-load-error"><p>Couldn't load this conversation.</p><span>${escapeHTML(error.message)}</span></div>`;
+    notify(error.message);
+  }
+}
+
+async function renderMessages() {
+  setPageTitle("YOUR CONVERSATIONS", "Messages");
+  activeConversation = null;
+  messageSearchQuery = "";
+  const requestId = ++messagePageRequest;
+  view.setAttribute("aria-busy", "true");
+  messageConversations = [];
+  if (!currentUser) {
+    view.innerHTML = emptyState("Your messages", "Log in to see conversations and send messages.", "Log in", "auth");
+    view.setAttribute("aria-busy", "false");
+    return;
+  }
+  view.innerHTML = '<div class="messages-layout messages-loading"><div class="messages-inbox"><div class="skeleton"></div></div><div class="messages-chat"><div class="skeleton"></div></div></div>';
+  try {
+    const { conversations, unreadCount } = await api("/messages");
+    if (requestId !== messagePageRequest || currentPage !== "messages") return;
+    messageConversations = conversations;
+    updateMessageBadge(unreadCount);
+    renderMessagesLayout();
+  } catch (error) {
+    if (requestId === messagePageRequest && currentPage === "messages") showError(error);
+  } finally {
+    if (requestId === messagePageRequest && currentPage === "messages") view.setAttribute("aria-busy", "false");
+  }
+}
+
 function renderPostMenu(post, className = "") {
   const isOwner = currentUser?.id === post.userId;
   return `<div class="post-menu-wrap ${className}" data-post-id="${escapeHTML(post.id)}">
@@ -182,7 +364,8 @@ function renderPost(post) {
     </button>
     <div class="post-actions">
       <button class="action-button ${post.liked ? "liked" : ""}" data-action="like" aria-label="${post.liked ? "Unlike" : "Like"} post" aria-pressed="${Boolean(post.liked)}">${post.liked ? "♥" : "♡"}</button>
-      <button class="action-button" data-action="comments" aria-label="View comments">♧</button>
+      <button class="action-button" data-action="comments" aria-label="View comments">${commentIcon()}</button>
+      <button class="action-button" data-action="share-post" aria-label="Share post">${shareIcon()}</button>
     </div>
     <p class="likes-count"><span data-likes-count>${post._count?.likes ?? 0}</span> likes</p>
     <p class="post-caption"><strong>${escapeHTML(post.user.username)}</strong>${escapeHTML(post.caption)}</p>
@@ -234,7 +417,8 @@ function renderPostDetail(post) {
       <footer class="post-detail-footer">
         <div class="detail-actions">
           <button class="action-button ${liked ? "liked" : ""}" data-action="like" aria-label="${liked ? "Unlike" : "Like"} post" aria-pressed="${liked}">${liked ? "♥" : "♡"}</button>
-          <button class="action-button" data-action="focus-comment" aria-label="Write a comment">♧</button>
+          <button class="action-button" data-action="focus-comment" aria-label="Write a comment">${commentIcon()}</button>
+          <button class="action-button" data-action="share-post" aria-label="Share post">${shareIcon()}</button>
         </div>
         <p class="detail-likes"><span data-likes-count>${post._count?.likes ?? 0}</span> likes</p>
         <time class="detail-posted-date" datetime="${escapeHTML(post.createdAt)}">${formattedDate(post.createdAt)}</time>
@@ -299,6 +483,7 @@ async function openPage(page, username = null) {
   if (page === "feed") return renderFeed();
   if (page === "explore") return renderExplore();
   if (page === "profile") return renderProfile(username);
+  if (page === "messages") return renderMessages();
   setPageTitle("STAY IN THE LOOP", "Notifications");
   view.innerHTML = emptyState("A quieter kind of social", "Notifications will appear here when someone likes, comments on, or follows you.");
 }
@@ -488,6 +673,10 @@ dialogs.forEach((dialog) => {
       shareSearchUsers = [];
     } else if (dialog.id === "connections-dialog") {
       connectionRequestId += 1;
+    } else if (dialog.id === "new-message-dialog") {
+      clearTimeout(newMessageSearchTimer);
+      newMessageRequest += 1;
+      newMessageUsers = [];
     }
   });
 });
@@ -496,6 +685,8 @@ function openAuth() {
   if (currentUser) {
     localStorage.removeItem(tokenKey);
     currentUser = null;
+    messageConversations = [];
+    activeConversation = null;
     updateAuthUI();
     notify("You’re logged out.");
     openPage("feed");
@@ -773,6 +964,28 @@ document.addEventListener("click", async (event) => {
     else if (action === "create") {
       if (!currentUser) return openAuth();
       openDialog("create-dialog");
+    } else if (action === "new-message") {
+      if (!currentUser) return openAuth();
+      newMessageUsers = [];
+      document.querySelector("#new-message-search-input").value = "";
+      document.querySelector("#new-message-results").innerHTML = '<p class="share-hint">Search for a username to start a chat.</p>';
+      openDialog("new-message-dialog");
+      document.querySelector("#new-message-search-input").focus();
+    } else if (action === "select-message-user") {
+      const user = newMessageUsers.find((candidate) => candidate.id === control.dataset.userId);
+      if (!user) return;
+      document.querySelector("#new-message-dialog").close();
+      syncDialogScrollLock();
+      if (currentPage !== "messages") await openPage("messages");
+      return openMessageConversation(user);
+    } else if (action === "select-conversation") {
+      const conversation = messageConversations.find(({ user }) => user.id === control.dataset.userId);
+      const user = conversation?.user || (activeConversation?.id === control.dataset.userId ? activeConversation : null);
+      if (user) return openMessageConversation(user);
+    } else if (action === "back-to-conversations") {
+      activeConversation = null;
+      messageHistoryRequest += 1;
+      renderMessagesLayout();
     } else if (action === "my-profile") {
       if (!currentUser) return openAuth();
       return openPage("profile", currentUser.username);
@@ -878,6 +1091,7 @@ document.querySelector("#auth-form").addEventListener("submit", async (event) =>
     localStorage.setItem(tokenKey, result.token);
     currentUser = result.user;
     updateAuthUI();
+    void loadMessageBadge();
     closeDialogs();
     form.reset();
     notify(authMode === "register" ? "Welcome to Shocialgram!" : "Welcome back.");
@@ -1000,6 +1214,61 @@ document.querySelector("#post-detail").addEventListener("submit", async (event) 
   } catch (error) { notify(error.message); }
 });
 
+document.addEventListener("submit", async (event) => {
+  if (!event.target.matches("#message-form")) return;
+  event.preventDefault();
+  const form = event.target;
+  const content = form.elements.content.value.trim();
+  const peer = activeConversation;
+  if (!peer || !content) return;
+  const submit = form.querySelector('[type="submit"]');
+  submit.disabled = true;
+  submit.textContent = "Sending…";
+  try {
+    const { message } = await api("/messages", {
+      method: "POST",
+      body: JSON.stringify({ receiverId: peer.id, content }),
+    });
+    if (currentPage === "messages") {
+      const previous = messageConversations.filter(({ user }) => user.id !== peer.id);
+      messageConversations = [
+        { user: peer, lastMessage: message, unreadCount: 0 },
+        ...previous,
+      ];
+      const list = document.querySelector("#message-conversation-list");
+      if (list) list.innerHTML = renderConversationList();
+    }
+    notify("Message sent.");
+    if (currentPage === "messages" && activeConversation?.id === peer.id) {
+      await openMessageConversation(peer);
+    }
+  } catch (error) {
+    const feedback = document.querySelector("#message-send-feedback");
+    if (feedback) {
+      feedback.textContent = error.message;
+      feedback.hidden = false;
+    }
+    notify(error.message);
+    if (submit.isConnected) {
+      submit.disabled = false;
+      submit.textContent = "Send";
+    }
+  }
+});
+
+document.addEventListener("input", (event) => {
+  if (event.target.matches("#message-form textarea")) {
+    const submit = event.target.closest("form").querySelector('[type="submit"]');
+    submit.disabled = !event.target.value.trim();
+    return;
+  }
+  if (event.target.matches("#message-conversation-search")) {
+    messageSearchQuery = event.target.value.trim();
+    const list = document.querySelector("#message-conversation-list");
+    if (list) list.innerHTML = renderConversationList();
+  }
+});
+
 let searchTimer;
 document.querySelector("#user-search").addEventListener("input", (event) => {
   clearTimeout(searchTimer);
@@ -1045,6 +1314,33 @@ document.querySelector("#share-user-search").addEventListener("input", (event) =
   }, 220);
 });
 
+document.querySelector("#new-message-search-input").addEventListener("input", (event) => {
+  clearTimeout(newMessageSearchTimer);
+  const query = event.target.value.trim();
+  const results = document.querySelector("#new-message-results");
+  const requestId = ++newMessageRequest;
+  if (query.length < 2) {
+    newMessageUsers = [];
+    results.innerHTML = '<p class="share-hint">Search with at least two characters.</p>';
+    return;
+  }
+  results.innerHTML = '<div class="share-search-loading"><span></span><span></span><span></span></div>';
+  newMessageSearchTimer = setTimeout(async () => {
+    try {
+      const { users } = await api(`/users/search?q=${encodeURIComponent(query)}`);
+      if (requestId !== newMessageRequest || !document.querySelector("#new-message-dialog").open) return;
+      newMessageUsers = users.filter((user) => user.id !== currentUser?.id);
+      results.innerHTML = newMessageUsers.length
+        ? newMessageUsers.map((user) => `<button class="new-message-user" type="button" data-action="select-message-user" data-user-id="${escapeHTML(user.id)}">${avatar(user)}<span><strong>@${escapeHTML(user.username)}</strong><small>${escapeHTML(user.fullName || "Shocialgram member")}</small></span><span aria-hidden="true">›</span></button>`).join("")
+        : '<p class="share-hint">No people found.</p>';
+    } catch (error) {
+      if (requestId !== newMessageRequest) return;
+      results.innerHTML = `<p class="share-error">${escapeHTML(error.message)}</p>`;
+      notify(error.message);
+    }
+  }, 220);
+});
+
 document.documentElement.dataset.theme = localStorage.getItem(themeKey) || "light";
 document.querySelectorAll("[data-theme-label]").forEach((label) => {
   label.textContent = document.documentElement.dataset.theme === "dark" ? "Light mode" : "Dark mode";
@@ -1057,6 +1353,7 @@ if (localStorage.getItem(tokenKey)) {
     .catch(() => localStorage.removeItem(tokenKey))
     .finally(async () => {
       await openPage("feed");
+      if (currentUser) await loadMessageBadge();
       const sharedPostId = new URLSearchParams(window.location.search).get("post");
       if (sharedPostId) await openPost(sharedPostId);
     });

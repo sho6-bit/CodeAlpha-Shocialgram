@@ -16,6 +16,10 @@
         <button class="nav-link active" data-page="feed"><span class="nav-icon">⌂</span> Home</button>
         <button class="nav-link" data-page="explore"><span class="nav-icon">⌕</span> Explore</button>
         <button class="nav-link" data-action="create"><span class="nav-icon">＋</span> Create post</button>
+        <button class="nav-link" data-page="messages">
+          <span class="nav-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"></path><path d="m22 2-7 20-4-9-9-4Z"></path></svg></span>
+          Messages <span class="message-badge" data-message-badge hidden></span>
+        </button>
         <button class="nav-link" data-page="notifications"><span class="nav-icon">♡</span> Notifications</button>
         <button class="nav-link" data-action="my-profile"><span class="nav-icon">◎</span> Profile</button>
       </nav>
@@ -53,6 +57,10 @@
       <button class="nav-link active" data-page="feed" aria-label="Home">⌂</button>
       <button class="nav-link" data-page="explore" aria-label="Explore">⌕</button>
       <button class="nav-link" data-action="create" aria-label="Create post">＋</button>
+      <button class="nav-link" data-page="messages" aria-label="Messages">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2 11 13"></path><path d="m22 2-7 20-4-9-9-4Z"></path></svg>
+        <span class="message-badge" data-message-badge hidden></span>
+      </button>
       <button class="nav-link" data-page="notifications" aria-label="Notifications">♡</button>
       <button class="nav-link" data-action="my-profile" aria-label="Profile">◎</button>
     </nav>
@@ -74,14 +82,14 @@
     </dialog>
 
     <dialog id="create-dialog" class="dialog-card">
-      <form id="create-form">
+      <form id="create-form" novalidate>
         <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close">×</button>
         <p class="eyebrow">MAKE A MOMENT</p>
         <h2>Create a post</h2>
         <div class="image-field">
           <span class="field-label">Post image</span>
           <div class="image-uploader" data-image-uploader>
-            <input id="create-image" class="image-uploader-input" data-image-input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-label="Choose a post image" tabindex="-1" aria-hidden="true">
+            <input id="create-image" class="image-uploader-input" data-image-input name="image" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" aria-label="Choose a post image" tabindex="-1" aria-hidden="true" required>
             <button class="image-dropzone" type="button" data-image-browse>
               <span class="image-upload-icon" aria-hidden="true">↑</span>
               <strong>Drag and drop your image here</strong>
@@ -193,6 +201,18 @@
         <div id="share-user-results" class="share-user-results" aria-live="polite"></div>
         <button id="send-post-share" class="button button-coral button-wide" type="button" data-action="send-post-share" disabled>Choose a recipient</button>
       </section>
+    </dialog>
+    <dialog id="new-message-dialog" class="dialog-card new-message-dialog" aria-labelledby="new-message-title">
+      <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close new message dialog">×</button>
+      <p class="eyebrow">START A CONVERSATION</p>
+      <h2 id="new-message-title">New message</h2>
+      <label class="new-message-search" for="new-message-search-input">
+        <span class="visually-hidden">Search people</span>
+        <input id="new-message-search-input" type="search" autocomplete="off" placeholder="Search username">
+      </label>
+      <div id="new-message-results" class="new-message-results" aria-live="polite">
+        <p class="share-hint">Search for a username to start a chat.</p>
+      </div>
     </dialog>
     <dialog id="connections-dialog" class="dialog-card connections-dialog" aria-labelledby="connections-title">
       <button class="dialog-close" type="button" data-action="close-dialog" aria-label="Close connections dialog">×</button>
